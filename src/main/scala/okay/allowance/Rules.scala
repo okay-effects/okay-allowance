@@ -23,14 +23,13 @@ object Rules:
 /**
  * THE RULES AS A MODEL, judged in Scala: the decision a policy gives a payment of `amount` (8 decimals) to `payee`
  * for `invoice` at `now` (seconds), in SpendPolicy.sol's order of checks — `None` paid, else the reason. The approval
- * threshold aside (a request moves nothing). `memory`: how many periods a paid invoice is remembered — forever on the
- * EVM (`None`), this period and the one before on Cardano (`Some(2)`, §9).
+ * threshold aside (a request moves nothing). An invoice paid is remembered forever, on every chain (§9).
  */
-final class Judge(rules: Rules, start: Long, var balance: BigInt, memory: Option[Int] = None):
+final class Judge(rules: Rules, start: Long, var balance: BigInt):
   private final case class Mine(spent: BigInt, period: Long, last: Long)
   private var spent = BigInt(0); private var period = -1L
   private var mine = Map.empty[String, Mine]
-  private var paid = Map.empty[String, Long]
+  private var paid = Set.empty[String]
   private val day = 86_400L
 
   def judge(payee: String, amount: BigInt, invoice: String, now: Long): Option[String] =
@@ -43,7 +42,7 @@ final class Judge(rules: Rules, start: Long, var balance: BigInt, memory: Option
     else if amount <= 0 then Some("ZeroAmount")
     else if p.isEmpty then Some("PayeeNotAllowed")
     else if amount > Rules.units(rules.maxPayment) then Some("OverMax")
-    else if paid.get(invoice).exists(pw => memory.forall(n => w - pw < n)) then Some("AlreadyPaid")
+    else if paid(invoice) then Some("AlreadyPaid")
     else if m.last != 0 && now < m.last + p.get.gapDays * day then Some("TooSoon")
     else if own > Rules.units(p.get.cap) then Some("PayeeCap")
     else if total > Rules.units(rules.periodCap) then Some("PeriodCap")
@@ -58,6 +57,6 @@ final class Judge(rules: Rules, start: Long, var balance: BigInt, memory: Option
       val m = mine.getOrElse(payee, Mine(0, -1, 0))
       mine += payee -> Mine((if m.period == w then m.spent else BigInt(0)) + amount, w, now)
       spent = (if period == w then spent else BigInt(0)) + amount; period = w
-      paid += invoice -> w
+      paid += invoice
       balance -= amount
     r

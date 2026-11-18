@@ -8,6 +8,8 @@ import scalus.cardano.onchain.plutus.v3.{Credential, TxOutRef}
 import scalus.cardano.onchain.plutus.prelude.List
 import scalus.cardano.txbuilder.TxBuilder
 import scalus.uplc.DeBruijnedProgram
+import scalus.crypto.trie.MerklePatriciaForestry as Trie
+import scalus.cardano.onchain.plutus.crypto.trie.MerklePatriciaForestry.Proof
 import scalus.uplc.builtin.{ByteString, FromData, ToData}
 import scalus.uplc.builtin.Data.toData
 
@@ -18,26 +20,24 @@ case class Payee(who: Credential, cap: BigInt, gap: BigInt, spent: BigInt, windo
     derives FromData, ToData
 case class PolicyState(owner: PubKeyHash, agent: PubKeyHash, token: AssetClass, period: BigInt, start: BigInt,
     periodCap: BigInt, maxPayment: BigInt, approvalAbove: BigInt, expires: BigInt, paused: Boolean, window: BigInt,
-    spent: BigInt, payees: List[Payee], paid: List[ByteString], paidBefore: List[ByteString])
+    spent: BigInt, payees: List[Payee], invoices: ByteString)
     derives FromData, ToData:
 
   /** THE STATE AFTER A PAYMENT, as the script computes it: the window at `at` (ms), the spending, the payee's,
-   * the invoice remembered */
-  def after(who: Credential, amount: BigInt, invoice: ByteString, at: BigInt): PolicyState =
+   * the invoices paid — `invoices`, the trie's new root */
+  def after(who: Credential, amount: BigInt, invoices: ByteString, at: BigInt): PolicyState =
     val w = (at - start) / period
-    val now = if w == window then paid else List.Nil
-    val before = if w == window then paidBefore else if w == window + 1 then paid else List.Nil
     copy(window = w, spent = (if w == window then spent else BigInt(0)) + amount,
       payees = payees.map(p => if p.who == who then p.copy(spent = (if p.window == w then p.spent else BigInt(0)) +
         amount, window = w, last = at) else p),
-      paid = List.Cons(invoice, now), paidBefore = before)
+      invoices = invoices)
 
   def payee(who: Credential): Option[Payee] = payees.find(_.who == who) match
     case scalus.cardano.onchain.plutus.prelude.Option.Some(p) => Some(p)
     case _ => None
 
 enum PolicyAction derives FromData, ToData:
-  case Pay(payee: Credential, amount: BigInt, invoice: ByteString)
+  case Pay(payee: Credential, amount: BigInt, invoice: ByteString, proof: Proof)
   case Deposit
   case Owner
 
@@ -85,15 +85,20 @@ object Policy:
       .payTo(address(script, env.network), policy.output.value + token(state, amount), state)
 
   /** PAY: the agent pays `amount` to `to` for `invoice`, valid for ten minutes from the slot `from` (its start is the
-   * payment's time); above approvalAbove the owner's signature is required too */
+   * payment's time); above approvalAbove the owner's signature is required too. `paid`: the invoices paid, the trie
+   * whose root the state keeps — the proof of this one's absence from it, the new root with it */
   def pay(env: CardanoInfo, policy: Utxo, script: Script.PlutusV3, state: PolicyState, to: Address, amount: BigInt,
-      invoice: ByteString, from: SlotNo): TxBuilder =
+      invoice: ByteString, from: SlotNo, paid: Trie): TxBuilder =
     val at = BigInt(env.slotConfig.slotToTime(from))
     val who = credential(to)
+    // an invoice paid has no proof of absence: a stale one (the empty trie's) is sent, and the script refuses it
+    val again = paid.get(invoice).isDefined
+    val proof = if again then Trie.empty.proveNonMembership(invoice) else paid.proveNonMembership(invoice)
+    val root = if again then paid.rootHash else paid.insert(invoice, ByteString.empty).rootHash
     val b = TxBuilder(env)
-      .spend(policy, PolicyAction.Pay(who, amount, invoice), script)
+      .spend(policy, PolicyAction.Pay(who, amount, invoice, proof), script)
       .payTo(address(script, env.network), policy.output.value - token(state, amount),
-        state.after(who, amount, invoice, at))
+        state.after(who, amount, root, at))
       .payTo(to, LValue.ada(2) + token(state, amount))
       .requireSignature(AddrKeyHash(state.agent.hash))
       .validDuring(ValidityInterval(Some(from), Some(from + 600)))

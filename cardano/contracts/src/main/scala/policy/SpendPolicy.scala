@@ -8,6 +8,8 @@ import scalus.cardano.onchain.plutus.v1.PolicyId
 import scalus.cardano.onchain.plutus.v2.OutputDatum
 import scalus.cardano.onchain.plutus.v3.*
 import scalus.cardano.onchain.plutus.prelude.*
+import scalus.cardano.onchain.plutus.crypto.trie.MerklePatriciaForestry
+import scalus.cardano.onchain.plutus.crypto.trie.MerklePatriciaForestry.Proof
 
 /** the stablecoin the policy holds */
 case class AssetClass(policy: PolicyId, name: ByteString) derives FromData, ToData
@@ -19,15 +21,16 @@ case class Payee(who: Credential, cap: BigInt, gap: BigInt, spent: BigInt, windo
 
 /** THE POLICY'S STATE (specs/allowance.md §9), the inline datum of the one UTxO carrying its NFT: the owner, the
   * agent, the token; the window's length (ms) and its start, the most a window, a payment, and without the owner's
-  * signature; when it ends (ms); paused; this window's index and spending; the payees; the invoices paid in this
-  * window and in the one before */
+  * signature; when it ends (ms); paused; this window's index and spending; the payees; the invoices ever paid, the
+  * root of a Merkle Patricia Forestry (32 bytes, however many) */
 case class PolicyState(owner: PubKeyHash, agent: PubKeyHash, token: AssetClass, period: BigInt, start: BigInt,
     periodCap: BigInt, maxPayment: BigInt, approvalAbove: BigInt, expires: BigInt, paused: Boolean, window: BigInt,
-    spent: BigInt, payees: List[Payee], paid: List[ByteString], paidBefore: List[ByteString])
+    spent: BigInt, payees: List[Payee], invoices: ByteString)
     derives FromData, ToData
 
 enum PolicyAction derives FromData, ToData:
-    case Pay(payee: Credential, amount: BigInt, invoice: ByteString)
+    /** `proof`: the invoice is not among those paid (a non-membership proof of the MPF) */
+    case Pay(payee: Credential, amount: BigInt, invoice: ByteString, proof: Proof)
     case Deposit
     case Owner
 
@@ -45,7 +48,8 @@ enum PolicyMint derives FromData, ToData:
   *     the amount must reach that credential's outputs (NotPaid).
   *   - THE AGENT TAKES MORE THAN IT PAYS: the one output back holds the balance less the amount, exactly, and the
   *     next state, exactly, compared as data (BalanceChanged, StateChanged).
-  *   - TWICE THE SAME INVOICE: kept for two windows (AlreadyPaid); older ones bounded by the payee's cap and gap.
+  *   - TWICE THE SAME INVOICE: every invoice paid is in the MPF whose root the state keeps; a payment proves its
+  *     invoice absent and the next root is the old one with it inserted (AlreadyPaid: no such proof exists).
   *   - A BURST OF PAYMENTS (an old start reused): the validity window at most an hour, its start never before the
   *     state's window nor the payee's gap.
   *   - FORGED STATE, DOUBLE SATISFACTION, STAKE HIJACK: as the vault — only the UTxO with the NFT is the state, one
@@ -84,7 +88,7 @@ object SpendPolicy extends DataParameterizedValidator {
         require(tx.findInputsByCredential(ownCred).length == BigInt(1), OneInput)
         val st = inlineState(own)
         redeemer.to[PolicyAction] match
-            case PolicyAction.Pay(payee, amount, invoice) =>
+            case PolicyAction.Pay(payee, amount, invoice, proof) =>
                 require(tx.isSignedBy(st.agent), NotAgent)
                 require(!st.paused, Paused)
                 require(tx.mint.tokens(ownHash).isEmpty, NoMint)
@@ -101,10 +105,9 @@ object SpendPolicy extends DataParameterizedValidator {
                 require(from >= st.start, NotStarted)
                 val w = (from - st.start) / st.period
                 require(w >= st.window, BadTime)
-                val paidNow = if w == st.window then st.paid else List.Nil
-                val paidBefore =
-                    if w == st.window then st.paidBefore else if w == st.window + 1 then st.paid else List.Nil
-                require(!paidNow.exists(i => i === invoice) && !paidBefore.exists(i => i === invoice), AlreadyPaid)
+                // AlreadyPaid: the invoice absent from those paid, by the proof, and inserted — the MPF's own refusal
+                // ("Invalid proof or element exists") when it is there: no proof of absence exists
+                val invoices = MerklePatriciaForestry(st.invoices).insert(invoice, ByteString.empty, proof).root
                 require(p.last == BigInt(0) || from >= p.last + p.gap, TooSoon)
                 val own1 = (if p.window == w then p.spent else BigInt(0)) + amount
                 require(own1 <= p.cap, PayeeCap)
@@ -118,7 +121,7 @@ object SpendPolicy extends DataParameterizedValidator {
                 val next = PolicyState(st.owner, st.agent, st.token, st.period, st.start, st.periodCap,
                     st.maxPayment, st.approvalAbove, st.expires, st.paused, w, total,
                     st.payees.map(x => if x.who === payee then Payee(payee, p.cap, p.gap, own1, w, from) else x),
-                    List.Cons(invoice, paidNow), paidBefore)
+                    invoices)
                 require(outDatum(out) == next.toData, StateChanged)
                 require(out.value.quantityOf(st.token.policy, st.token.name) == balance - amount, BalanceChanged)
                 require(out.value.getLovelace >= own.value.getLovelace, BalanceChanged)
@@ -170,6 +173,7 @@ object SpendPolicy extends DataParameterizedValidator {
         require(st.owner.hash.length == BigInt(28) && st.agent.hash.length == BigInt(28), BadKeys)
         require(st.token.policy.length == BigInt(28), BadToken)
         require(st.period > BigInt(0), BadPeriod)
+        require(st.invoices.length == BigInt(32), BadInvoices)
         st
 
     inline val SeedNotSpent = "SeedNotSpent: the seed UTxO must be spent"
@@ -210,4 +214,5 @@ object SpendPolicy extends DataParameterizedValidator {
     inline val BadKeys = "BadKeys: the owner and the agent are 28-byte key hashes"
     inline val BadToken = "BadToken: the token is a native token"
     inline val BadPeriod = "BadPeriod: the window's length is positive"
+    inline val BadInvoices = "BadInvoices: the invoices paid are a 32-byte MPF root"
 }

@@ -14,7 +14,9 @@
   over real stdio from another directory (Files.home). Was: the MCP server (§10): tools check_payment, pay, status, requests over the agent (Agent.on, decide,
   Node.trial) on okay-mcp 0.1.0 (sjs1) + okay-effects-async 0.1.1 — `Servers.dispatch[Async]` per stdin line to a
   Future; Node.status (EVM views / Cardano datum); `main.js mcp demo|CONFIG`; McpSuite drives JSON lines.
-- [~] **rules** — (§11) Rules + Judge (Rules.scala), Life and CardanoWorld from Rules, Cardano checks in the EVM's
+- [x] **rules** — DONE 2026-11-18 (§11): the EVM contract, the Cardano script and the model agree on 120 random
+  payments, reason for reason; Cardano's invoices in an MPF root (forever, 32 bytes; script 7.2 KB); PolicySpec 24.
+  Was: (§11) Rules + Judge (Rules.scala), Life and CardanoWorld from Rules, Cardano checks in the EVM's
   order, RulesSuite (EVM = model, Cardano = model, 120 random). NOW: Cardano invoice memory as an MPF root (§9):
   PolicyState.invoices (root) instead of paid/paidBefore; Pay(payee, amount, invoice, proof); script
   `MerklePatriciaForestry(st.invoices).insert(invoice, empty, proof).root == next.invoices`; off-chain

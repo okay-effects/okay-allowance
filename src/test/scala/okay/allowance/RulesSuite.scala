@@ -5,13 +5,12 @@ import scalus.uplc.builtin.ByteString
 import okay.allowance.cardano.CardanoWorld
 
 /** ONE SET OF RULES, TWO CHAINS (specs/allowance.md §11): the same random payments on the EVM contract, on the
- * Cardano validator and through the Scala model of the rules — the three decide alike, reason for reason. The one
- * difference the design has (§9): an invoice paid more than a period ago is forgotten on Cardano; the model with
- * Cardano's memory says when, and the test counts it. */
+ * Cardano validator and through the Scala model of the rules — the three decide alike, reason for reason. (Its first
+ * run found Cardano forgetting old invoices and paying them again; they are kept in an MPF root since, §9.) */
 class RulesSuite extends munit.FunSuite:
   override val munitTimeout = scala.concurrent.duration.Duration(5, "min")
 
-  test("120 random payments: the EVM contract, the Cardano script and the model agree on each") {
+  test("120 random payments: the EVM contract, the Cardano script and the model agree on each, reason too") {
     var seed = 7L
     def rnd(): Double = { seed = (seed * 1103515245 + 12345) % (1L << 31); seed.toDouble / (1L << 31) }
     // no approvals (a request moves nothing on either), ten years (no expiry)
@@ -25,7 +24,7 @@ class RulesSuite extends munit.FunSuite:
       start = w.chain.now.toString.toLong
       _ = assertEquals(ada.now / 1000, start)
       evmModel = Judge(rules, start, Rules.units(1_000))
-      adaModel = Judge(rules, start, Rules.units(1_000), memory = Some(2))
+      adaModel = Judge(rules, start, Rules.units(1_000))
       results <- {
         var paid = Vector.empty[String]
         Life.inOrder(0 until 120) { i =>
@@ -50,12 +49,9 @@ class RulesSuite extends munit.FunSuite:
       val adaOff = results.filter(r => r._7 != r._8)
       for r <- evmOff ++ adaOff do println(s"  disagree $r")
       assertEquals((evmOff.size, adaOff.size), (0, 0))
-      // the chains part only where the design says: an invoice older than a period, refused on the EVM, forgotten
-      // on Cardano (then their books differ, each still as its model says)
-      val apart = results.filter(r => r._5 != r._7)
-      apart.headOption.foreach(r => assert(r._5.contains("AlreadyPaid") && !r._7.contains("AlreadyPaid"), r.toString))
+      assertEquals(results.filter(r => r._5 != r._7), Vector.empty, "the chains apart")
       val reasons = results.flatMap(_._5).groupBy(identity).view.mapValues(_.size).toMap
-      println(s"  paid ${results.count(_._5.isEmpty)}, refused $reasons, Cardano's memory apart ${apart.size}, old invoices paid again on Cardano ${
-        results.count(r => r._5.contains("AlreadyPaid") && r._7.isEmpty)}")
-      assert(Set("PayeeNotAllowed", "AlreadyPaid", "PayeeCap", "TooSoon").subsetOf(reasons.keySet), reasons.toString)
+      println(s"  paid ${results.count(_._5.isEmpty)}, refused $reasons")
+      assert(Set("PayeeNotAllowed", "AlreadyPaid", "PayeeCap", "TooSoon", "InsufficientBalance")
+        .subsetOf(reasons.keySet), reasons.toString)
   }

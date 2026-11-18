@@ -11,6 +11,7 @@ import scalus.cardano.onchain.plutus.prelude.List as PList
 import scalus.cardano.txbuilder.TransactionSigner
 import scalus.cardano.wallet.hd.HdAccount
 import scalus.crypto.ed25519.given
+import scalus.crypto.trie.MerklePatriciaForestry as Trie
 import scalus.uplc.builtin.{ByteString, Data}
 import okay.allowance.{Event, Node, Outcome, PayeeStatus, Rules, Status}
 
@@ -60,6 +61,8 @@ final class CardanoWorld(rules: Rules = Rules.demo):
   ledger.setSlot(slot)
 
   private var script: Script.PlutusV3 = null
+  /** the invoices paid: the trie whose root the policy's state keeps (rebuilt from the Pay redeemers if lost) */
+  private var paid = Trie.empty
   def policyAddress: Address = Policy.address(script, env.network)
   private def policy: Utxo = Utxo(utxos(policyAddress).find((_, o) => o.value.assets.assets.contains(
     script.scriptHash)).get)
@@ -86,7 +89,7 @@ final class CardanoWorld(rules: Rules = Rules.demo):
       day * rules.periodDays, BigInt(now), Rules.units(rules.periodCap), Rules.units(rules.maxPayment),
       Rules.units(rules.approvalAbove), BigInt(now) + day * rules.days, false, 0, 0,
       PList.from(rules.payees.map(r => Payee(Policy.credential(parties(r.name)), Rules.units(r.cap), day * r.gapDays,
-        0, 0, 0))), PList.Nil, PList.Nil)
+        0, 0, 0))), Trie.empty.rootHash)
     submit(Policy.create(env, seed, script, Value.ada(10) + tusd(CardanoWorld.usd(deposit)), st)
       .complete(availableUtxos = utxos(parties("owner")), sponsor = parties("owner")).sign(signer("owner"))
       .transaction)
@@ -108,10 +111,10 @@ final class CardanoWorld(rules: Rules = Rules.demo):
       send: Boolean = true): Either[String, Transaction] =
     val st = state
     def build =
-      val b = Policy.pay(env, policy, script, st, to, amount, invoice, slot)
+      val b = Policy.pay(env, policy, script, st, to, amount, invoice, slot, paid)
       val done = b.complete(availableUtxos = utxos(parties(signers.head)), sponsor = parties(signers.head))
       signers.foldLeft(done)((d, s) => d.sign(signer(s))).transaction
-    if send then submit(build)
+    if send then submit(build).map { tx => paid = paid.insert(invoice, ByteString.empty); tx }
     else scala.util.Try(build).toEither.left.map(e => CardanoWorld.reason(String.valueOf(e.getMessage) + " " +
       e.toString))
 
@@ -195,5 +198,6 @@ object CardanoWorld:
     "StateChanged", "BalanceChanged", "NotPaid", "DepositNothing", "NotOwner", "OnlyTheToken", "SameAddress",
     "OneOutput", "OneInput", "NoMint", "WindowTooLong", "NotThePolicy", "BadPeriod")
   def reason(message: String): String =
-    errors.map(e => e -> message.indexOf(e + ":")).filter(_._2 >= 0).sortBy(_._2).headOption.map(_._1)
+    (errors.map(e => e -> message.indexOf(e + ":")) :+ ("AlreadyPaid" -> message.indexOf("element exists")))
+      .filter(_._2 >= 0).sortBy(_._2).headOption.map(_._1)
       .getOrElse(message.take(200))

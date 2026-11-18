@@ -9,6 +9,8 @@ import scalus.cardano.onchain.plutus.v2.OutputDatum
 import scalus.cardano.onchain.plutus.v3.*
 import scalus.cardano.onchain.plutus.prelude.{List, Option as POption}
 import scalus.testing.kit.{ScalusTest, TestUtil}
+import scalus.crypto.trie.MerklePatriciaForestry as Trie
+import scalus.cardano.onchain.plutus.crypto.trie.MerklePatriciaForestry.Proof
 
 /** THE POLICY ON CARDANO (specs/allowance.md §9): the agent's payments, a deposit, the owner, the birth — and every
   * attack refused for its own reason, named as SpendPolicy.sol names it */
@@ -36,7 +38,7 @@ class PolicySpec extends AnyFunSuite, ScalusTest {
 
     // a month's window from t0; 400 a month, 300 a payment, the owner's signature above 100; a year
     private val st = PolicyState(owner, agent, usd, day * 30, t0, 400, 300, 100, t0 + day * 365, false, 0, 0,
-        List(Payee(cloud, 150, 0, 0, 0, 0), Payee(net, 80, day * 25, 0, 0, 0)), List(), List())
+        List(Payee(cloud, 150, 0, 0, 0, 0), Payee(net, 80, day * 25, 0, 0, 0)), Trie.empty.rootHash)
     private val held = ada(5_000_000) + nft + tusd(1000)
     private val ref = TestUtil.mockTxOutRef(9, 0)
 
@@ -50,26 +52,31 @@ class PolicySpec extends AnyFunSuite, ScalusTest {
             validRange = range)
         program.runWithDebug(ScriptContext(tx, action.toData, ScriptInfo.SpendingScript(ref, POption.None)))
 
+    /** the invoices paid, off-chain: each root the tests made, its trie */
+    private var tries = Map(Trie.empty.rootHash -> Trie.empty)
+    private def trie(s: PolicyState): Trie = tries(s.invoices)
+
     /** what the rules give after paying `amount` to `who` at `at` */
     private def after(s: PolicyState, who: Credential, amount: BigInt, id: String, at: BigInt): PolicyState =
         val w = (at - s.start) / s.period
-        val now = if w == s.window then s.paid else List.Nil
-        val before = if w == s.window then s.paidBefore else if w == s.window + 1 then s.paid else List.Nil
+        val paid = trie(s).insert(inv(id), ByteString.empty)
+        tries += paid.rootHash -> paid
         s.copy(window = w, spent = (if w == s.window then s.spent else BigInt(0)) + amount,
             payees = s.payees.map(p => if p.who === who then p.copy(spent = (if p.window == w then p.spent else
                 BigInt(0)) + amount, window = w, last = at) else p),
-            paid = List.Cons(inv(id), now), paidBefore = before)
+            invoices = paid.rootHash)
 
     /** the agent pays `amount` of the token to `who` at `at` (a 10-minute window): the honest transaction, each part
       * replaceable by an attack */
     private def pay(who: Credential, amount: BigInt, id: String = "INV-1", at: BigInt = t0 + day,
         s: PolicyState = st, inValue: Value = held, signers: List[PubKeyHash] = List(agent),
         next: PolicyState = null, back: Value = null, outs: List[TxOut] = null, until: BigInt = BigInt(-1),
-        minted: Value = Value.zero): Result =
+        minted: Value = Value.zero, proof: Proof = null): Result =
         val n = if next == null then after(s, who, amount, id, at) else next
+        val pr = if proof == null then trie(s).proveNonMembership(inv(id)) else proof
         val b = if back == null then inValue - tusd(amount) else back
         val o = if outs == null then List(out(n, b), to(who, ada(2_000_000) + tusd(amount))) else outs
-        spend(List(TxInInfo(ref, out(s, inValue))), o, PolicyAction.Pay(who, amount, inv(id)), signers,
+        spend(List(TxInInfo(ref, out(s, inValue))), o, PolicyAction.Pay(who, amount, inv(id), pr), signers,
             Interval.between(at, if until < 0 then at + 600_000 else until), minted)
 
     extension (r: Result)
@@ -110,10 +117,16 @@ class PolicySpec extends AnyFunSuite, ScalusTest {
         assert(pay(net, 20, "N2", t0 + day * 10, s = once).failsWith("TooSoon"))
         assert(pay(net, 20, "N2", t0 + day * 27, s = once).isSuccess)
     }
-    test("an invoice twice: in the same window, and in the next") {
+    test("an invoice twice, a year later too: no proof of its absence exists; a stale one is refused") {
         val once = after(st, cloud, 50, "C1", t0 + day)
-        assert(pay(cloud, 50, "C1", t0 + day * 2, s = once).failsWith("AlreadyPaid"))
-        assert(pay(cloud, 50, "C1", t0 + day * 32, s = once).failsWith("AlreadyPaid"))
+        val stale = Trie.empty.proveNonMembership(inv("C1"))
+        def refused(r: Result) = r.isFailure && r.logs.exists(_.contains("element exists"))
+        assert(refused(pay(cloud, 50, "C1", t0 + day * 2, s = once, next = once, proof = stale)))
+        assert(refused(pay(cloud, 50, "C1", t0 + day * 300, s = once, next = once, proof = stale)))
+    }
+    test("the invoice not remembered: the next root without it") {
+        assert(pay(cloud, 50, "C9", next = after(st, cloud, 50, "C9", t0 + day).copy(invoices = st.invoices))
+            .failsWith("StateChanged"))
     }
     test("paused, expired, a window over an hour, before the window recorded") {
         assert(pay(cloud, 10, s = st.copy(paused = true)).failsWith("Paused"))
@@ -154,7 +167,8 @@ class PolicySpec extends AnyFunSuite, ScalusTest {
     }
     test("a forged policy: an input without the NFT") {
         val r = spend(List(TxInInfo(ref, out(st, ada(5_000_000) + tusd(1000)))), List(out(st, tusd(910)),
-            to(cloud, tusd(90))), PolicyAction.Pay(cloud, 90, inv("F")), List(agent),
+            to(cloud, tusd(90))), PolicyAction.Pay(cloud, 90, inv("F"), Trie.empty.proveNonMembership(inv("F"))),
+            List(agent),
             Interval.between(t0 + day, t0 + day + 600_000))
         assert(r.failsWith("NotThePolicy"))
     }
