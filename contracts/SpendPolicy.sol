@@ -4,13 +4,16 @@ pragma solidity ^0.8.24;
 /// The ERC-20 calls the policy makes.
 interface IERC20 {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
+    function transfer(address to, uint256 amount) external returns (bool);
+    function balanceOf(address who) external view returns (uint256);
 }
 
-/// AN AGENT'S ALLOWANCE, ITS HANDS TIED (okay-allowance specs/allowance.md): the money stays in the owner's wallet;
-/// the owner gives this contract an ERC-20 allowance and sets the rules; the agent's one door, `pay`, pulls from the
-/// owner's wallet straight to a payee only when every rule holds — an allowed payee within its cap and gap, at most
-/// `maxPayment`, the period's total within `periodCap`, an invoice paid once, not paused, not expired. Above
-/// `approvalAbove` a payment becomes a request the owner approves or rejects. Every decision is an event.
+/// AN AGENT'S ALLOWANCE, ITS HANDS TIED (okay-allowance specs/allowance.md §8): a prepaid card — the owner tops it
+/// up (`deposit`; anyone may), withdraws what is left or closes it; the agent's one door, `pay`, sends from this
+/// contract's own balance to a payee only when every rule holds — an allowed payee within its cap and gap, at most
+/// `maxPayment`, the period's total within `periodCap`, an invoice paid once, the balance enough, not paused, not
+/// expired. Above `approvalAbove` a payment becomes a request the owner approves or rejects. Every decision is an
+/// event. The most that can ever be lost is the balance.
 contract SpendPolicy {
     error NotOwner();
     error NotAgent();
@@ -26,6 +29,7 @@ contract SpendPolicy {
     error ZeroAmount();
     error TransferFailed();
     error BadPeriod();
+    error InsufficientBalance(uint256 balance, uint256 amount);
 
     struct Payee {
         bool allowed;
@@ -66,6 +70,9 @@ contract SpendPolicy {
     event LimitsSet(uint256 period, uint256 periodCap, uint256 maxPayment, uint256 approvalAbove, uint256 expiresAt);
     event AgentSet(address indexed agent);
     event PausedSet(bool paused);
+    event Deposited(address indexed from, uint256 amount);
+    event Withdrawn(address indexed to, uint256 amount);
+    event Closed(address indexed to, uint256 amount);
 
     constructor(IERC20 token_, address agent_, uint256 period_, uint256 periodCap_, uint256 maxPayment_,
         uint256 approvalAbove_, uint256 expiresAt_) {
@@ -137,9 +144,11 @@ contract SpendPolicy {
         if (payeeSpent > p.capPerPeriod) revert PayeeCap(payee, payeeSpent, p.capPerPeriod);
         uint256 total = (spentPeriod == now_ ? spent : 0) + amount;
         if (total > periodCap) revert PeriodCap(total, periodCap);
+        uint256 bal = token.balanceOf(address(this));
+        if (amount > bal) revert InsufficientBalance(bal, amount);
     }
 
-    /// the books first, then the transfer from the owner's wallet (checks, effects, interactions)
+    /// the books first, then the transfer from this contract's balance (checks, effects, interactions)
     function settle(address payee, uint256 amount, bytes32 invoice, bool approvedByOwner) internal {
         uint256 now_ = currentPeriod();
         Payee storage p = payees[payee];
@@ -149,8 +158,35 @@ contract SpendPolicy {
         spent = (spentPeriod == now_ ? spent : 0) + amount;
         spentPeriod = now_;
         paidInvoice[invoice] = true;
-        if (!token.transferFrom(owner, payee, amount)) revert TransferFailed();
+        if (!token.transfer(payee, amount)) revert TransferFailed();
         emit Paid(payee, amount, invoice, approvedByOwner);
+    }
+
+    /// TOPPING UP: `amount` from the caller (who approved it to this contract first); anyone may
+    function deposit(uint256 amount) external {
+        if (amount == 0) revert ZeroAmount();
+        if (!token.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
+        emit Deposited(msg.sender, amount);
+    }
+
+    /// what the card holds
+    function balance() external view returns (uint256) {
+        return token.balanceOf(address(this));
+    }
+
+    /// the owner takes `amount` back
+    function withdraw(uint256 amount, address to) external onlyOwner {
+        if (!token.transfer(to, amount)) revert TransferFailed();
+        emit Withdrawn(to, amount);
+    }
+
+    /// the owner takes everything back; the agent's door shut (paused, no agent)
+    function close(address to) external onlyOwner {
+        uint256 bal = token.balanceOf(address(this));
+        paused = true;
+        agent = address(0);
+        if (bal > 0 && !token.transfer(to, bal)) revert TransferFailed();
+        emit Closed(to, bal);
     }
 
     function requestCount() external view returns (uint256) {

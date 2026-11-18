@@ -137,7 +137,8 @@ object Agent:
       case "TooSoon" => s"$who was paid recently; the next payment is possible from ${date(args(1))}"
       case "AlreadyPaid" => "this invoice has already been paid"
       case "ZeroAmount" => "a payment of zero"
-      case other => s"refused by the contract ($other) — e.g. the owner's wallet or allowance does not cover it"
+      case "InsufficientBalance" => s"the policy holds ${money(args(0))}, not enough — the owner should top it up"
+      case other => s"refused by the contract ($other)"
 
   /** ONE INVOICE: judged, tried on its chain, paid or refused; its entry written to the journal */
   def one[R[_]: Has[Ledger] : Has[Journal]](inv: Invoice, book: Book, chains: Seq[String]): Entry ! R =

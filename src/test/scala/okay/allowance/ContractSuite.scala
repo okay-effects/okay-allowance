@@ -26,7 +26,7 @@ class ContractSuite extends munit.FunSuite:
     }
   }
 
-  test("the attacks: strangers, the agent's own bounds, requests, the allowance as the total, expiry, a bad period") {
+  test("the attacks: strangers, the agent's bounds, requests, the balance as the total, withdraw, close, expiry") {
     for
       w <- Life(Files.compiled, stopAfter = "created")
       c = w.chain; p = w.parties; owner = p("owner"); agent = p("agent"); cloud = p("cloud hosting")
@@ -35,7 +35,9 @@ class ContractSuite extends munit.FunSuite:
       pol <- deploy(30 * Day, c.now + js.BigInt((365 * Day).toString))
       _ <- c.call(owner, pol, "SpendPolicy", "setPayee", cloud.address, true, usd(1_000), js.BigInt(0))
       _ <- c.call(owner, w.token, "TestUSD", "approve", pol, usd(250))
-      pay = (who: Party, to: Party, x: Double, id: String) =>
+      d <- c.call(owner, pol, "SpendPolicy", "deposit", usd(250))
+      _ = assert(d.ok, d.toString)
+      pay =(who: Party, to: Party, x: Double, id: String) =>
         c.call(who, pol, "SpendPolicy", "pay", to.address, usd(x), invoice(id))
       results <- inOrder(Vector(
         ("a stranger's key cannot pay", () => pay(p("stranger"), cloud, 10, "A1"), "NotAgent"),
@@ -58,12 +60,36 @@ class ContractSuite extends munit.FunSuite:
       r4 <- c.call(owner, pol, "SpendPolicy", "approve", js.BigInt(7))
       _ = assert(r1.ok && r2.ok, s"$r1 $r2")
       _ = assertEquals((r3.reason, r4.reason), (Some("NoSuchRequest"), Some("NoSuchRequest")))
-      // the allowance is the total: 250 approved; 90 + 90 paid; the third fails in the token, nothing moves
-      before <- c.view(w.token, "TestUSD", "balanceOf", owner.address)
+      // the balance is the total: 250 deposited; 90 + 90 paid; the third refused with the numbers, nothing moves;
+      // the owner's wallet is never touched by a payment
+      wallet <- c.view(w.token, "TestUSD", "balanceOf", owner.address)
+      before <- c.view(pol, "SpendPolicy", "balance")
       t <- inOrder(Vector("T1", "T2", "T3"))(id => pay(agent, cloud, 90, id))
-      after <- c.view(w.token, "TestUSD", "balanceOf", owner.address)
+      after <- c.view(pol, "SpendPolicy", "balance")
+      walletAfter <- c.view(w.token, "TestUSD", "balanceOf", owner.address)
       _ = assertEquals(t.map(_.ok), Vector(true, true, false))
+      _ = assertEquals(t(2).reason, Some("InsufficientBalance"))
+      _ = assertEquals(t(2).args.map(_.toString), Vector(usd(70).toString, usd(90).toString))
       _ = assertEquals((before.asInstanceOf[js.BigInt] - after.asInstanceOf[js.BigInt]).toString, usd(180).toString)
+      _ = assertEquals(walletAfter.toString, wallet.toString)
+      // a top-up from anyone; the agent cannot take the money back; the owner can, and closing stops the agent
+      _ <- c.call(owner, w.token, "TestUSD", "transfer", p("stranger").address, usd(20))
+      _ <- c.call(p("stranger"), w.token, "TestUSD", "approve", pol, usd(20))
+      top <- c.call(p("stranger"), pol, "SpendPolicy", "deposit", usd(20))
+      tw <- c.call(agent, pol, "SpendPolicy", "withdraw", usd(1), agent.address)
+      tc <- c.call(agent, pol, "SpendPolicy", "close", agent.address)
+      _ = assert(top.ok, top.toString)
+      _ = assertEquals((tw.reason, tc.reason), (Some("NotOwner"), Some("NotOwner")))
+      wd <- c.call(owner, pol, "SpendPolicy", "withdraw", usd(10), owner.address)
+      cl <- c.call(owner, pol, "SpendPolicy", "close", owner.address)
+      left <- c.view(pol, "SpendPolicy", "balance")
+      gone <- c.view(w.token, "TestUSD", "balanceOf", owner.address)
+      late <- pay(agent, cloud, 1, "T4")
+      _ = assert(wd.ok && cl.ok, s"$wd $cl")
+      _ = assertEquals(left.toString, "0")
+      _ = assertEquals((gone.asInstanceOf[js.BigInt] - walletAfter.asInstanceOf[js.BigInt]).toString,
+        usd(70).toString) // -20 to the stranger, +10 withdrawn, +80 on close
+      _ = assert(late.reason.contains("Paused") || late.reason.contains("NotAgent"), late.toString)
       // expiry
       short <- deploy(30 * Day, c.now + js.BigInt(10))
       _ <- c.call(owner, short, "SpendPolicy", "setPayee", cloud.address, true, usd(1_000), js.BigInt(0))
@@ -85,7 +111,8 @@ class ContractSuite extends munit.FunSuite:
       payees = Vector((p("internet provider"), 80.0, 5L), (p("cloud hosting"), 150.0, 0L), (p("attacker"), 0.0, 0L))
       _ <- inOrder(payees.filter(_._2 > 0))((who, cap, gap) =>
         c.call(owner, pol, "SpendPolicy", "setPayee", who.address, true, usd(cap), js.BigInt((gap * Day).toString)))
-      _ <- c.call(owner, w.token, "TestUSD", "approve", pol, usd(1e6))
+      _ <- c.call(owner, w.token, "TestUSD", "approve", pol, usd(3_000))
+      _ <- c.call(owner, pol, "SpendPolicy", "deposit", usd(3_000))
       start = c.now.toString.toLong
       agreed <- {
         final case class Spent(spent: Double, period: Long, last: Long)

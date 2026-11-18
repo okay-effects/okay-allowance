@@ -53,14 +53,16 @@ object Life:
       _ = token = t
       _ <- c.call(owner, token, "TestUSD", "mint", owner.address, usd(5_000))
       // 1. the owner's policy: the agent's key; a 30-day period, at most 400 in it, at most 300 a payment, above 100
-      //    the owner approves, for a year; the payees with their caps and gaps; an allowance of 1 000 in all
+      //    the owner approves, for a year; the payees with their caps and gaps; 1 000 deposited on it
       pol <- c.deploy(owner, "SpendPolicy", token, agent.address, js.BigInt((30 * Day).toString), usd(400), usd(300),
         usd(100), c.now + js.BigInt((365 * Day).toString))
       _ = policy = pol
       _ <- inOrder(Vector(("internet provider", 60.0, 25L), ("cloud hosting", 200.0, 0L),
         ("electricity", 150.0, 25L), ("software licence", 100.0, 0L))) { (n, cap, gap) =>
         c.call(owner, policy, "SpendPolicy", "setPayee", p(n).address, true, usd(cap), js.BigInt((gap * Day).toString))
-      }.flatMap(_ => step("created", c.call(owner, token, "TestUSD", "approve", policy, usd(1_000))))
+      }.flatMap(_ => c.call(owner, token, "TestUSD", "approve", policy, usd(1_000)))
+        // the prepaid card topped up: 1 000 on the policy (§8.1)
+        .flatMap(_ => step("created", c.call(owner, policy, "SpendPolicy", "deposit", usd(1_000))))
       rest <- if stopAfter == "created" then Future.successful(world) else
         for
           _ <- step("internet", pay("internet provider", 49.99, "INT-2026-11"))
