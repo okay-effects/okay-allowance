@@ -37,12 +37,25 @@ calendar months.
 ## 4. The parts
 
 1. `contracts/SpendPolicy.sol` (Solidity 0.8, no dependencies); test tokens and a test payee in contracts/test.
-2. Tests (test.mjs): the life (the agent pays bills, a large one waits for the owner, refusals each for its own
+2. Tests (src/test, munit on Scala.js in node): the life (the agent pays bills, a large one waits for the owner, refusals each for its own
    reason), the attacks (a stranger's key, the agent paying itself, a payee over its cap, a bill paid twice, after a
    pause, after expiry, the agent trying the owner's functions, more than the allowance), and random payments
    against a model of the rules.
-3. The agent (agent.mjs): reads invoices (JSON), pays through the contract, explains each refusal; a model may read
-   free-text invoices, the contract is what bounds it.
+3. The agent (src/…/Agent.scala): a program on two effects — Ledger (a trial, a payment) and Journal — whose
+   handlers are the chain in memory (Chain.scala over @ethereumjs/vm) or a real node (Rpc.scala over viem); reads
+   invoices (JSON), pays through the contract, explains each refusal; a model may read free-text invoices, the
+   contract is what bounds it.
 4. The page: the owner's rules, the payments, the requests to approve — in the browser's own EVM (demo), and on a
    testnet through a wallet.
 5. A testnet deployment (the hackathon's chain: its RPC, chain id and test stablecoin from its public docs).
+
+## 5. In Scala (2026-11-18)
+
+The owner: "rewrite in Scala all you can". The contract stays Solidity (no Scala → EVM compiler); everything else is
+Scala 3 on Scala.js, the same code in node (the command line, the tests) and in a browser (the page): Chain.scala
+(the EVM in memory, a trial rolled back by a state checkpoint), Contracts.scala (solc-js; the same bytecode as before,
+checked), Life.scala, Agent.scala (effects Ledger and Journal; handlers memory and rpc), Rpc.scala (viem), Main.scala
+(contracts | demo | run). The JavaScript first version was the reference: the Scala one gives the same decisions, the
+same transaction hashes, and passes the same checks (7 munit suites' tests: the life, 18 attacks, 80 random payments,
+the agent's 10 invoices, its judgement, a trial writing nothing, the words). Transactions are run one after another
+(`Life.inOrder`): a sender's nonce forbids side by side.

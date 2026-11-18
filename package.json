@@ -2,10 +2,11 @@
   "name": "okay-allowance",
   "private": true,
   "type": "module",
-  "description": "An agent's allowance in a stablecoin, its hands tied by a contract (specs/allowance.md)",
+  "description": "npm libraries for okay-allowance (Scala.js): solc-js, @ethereumjs/vm, viem — the code is Scala (src/)",
   "scripts": {
-    "build": "node build.mjs",
-    "test": "node test.mjs"
+    "contracts": "sbt fastLinkJS && node target/scala-3.3.8/okay-allowance-fastopt/main.js contracts",
+    "demo": "sbt fastLinkJS && node target/scala-3.3.8/okay-allowance-fastopt/main.js demo",
+    "test": "sbt test"
   },
   "dependencies": {
     "@ethereumjs/block": "10.1.3",
