@@ -11,7 +11,10 @@
   drops the agent; the owner's wallet is never touched by a payment (tested). 9/9 suites. Cardano follows the same.
 - [ ] **mcp** — the policy's door as an MCP server (§8.3): check_payment, pay, status, requests; Scala on okay-mcp.
 - [ ] **rules** — one Scala model of the owner's rules (§6), each chain's policy set up from it.
-- [~] **cardano** — the policy as a Scalus validator (§9): (1) cardano/contracts — SpendPolicy validator + ScalusTest
+- [x] **cardano** — DONE 2026-11-18: validator 23 checks (cardano/contracts PolicySpec), 5.5 KB with error names;
+  CardanoWorld on the emulator: a life (CardanoSuite) and the agent on three chains (15 invoices, Cardano: paid,
+  waiting for the owner, refused PayeeNotAllowed). Not yet: a real Cardano node (Blockfrost/Koios via
+  okay-cardano) — BACKLOG until a testnet is needed. Was: the policy as a Scalus validator (§9): (1) cardano/contracts — SpendPolicy validator + ScalusTest
   spec of every refusal (template: ~/work/my/okay-invest/contracts StrategyVault + VaultSpec); (2) plutus.json →
   generated PolicyCode.scala (as okay-invest scripts/vault-report.scala vaultCode, but scala-cli in this repo);
   (3) off-chain in the Scala.js build: types, TxBuilder create/deposit/pay/close, a CardanoNode on the Emulator

@@ -4,7 +4,7 @@ import scala.scalajs.js
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
 
 /**
- * THE COMMAND LINE (node): `contracts` compiles; `demo [dir]` runs the agent on two chains in memory; `run CONFIG DIR`
+ * THE COMMAND LINE (node): `contracts` compiles; `demo [dir]` runs the agent on three chains; `run CONFIG DIR`
  * on real nodes — the config (JSON, outside the repository):
  * `{ "chains": [{ "name", "rpc", "chainId", "policy", "keyFile" }, …], "book": { "<payee>": { "<chain>": "0x…" } } }`,
  * the chains in the owner's order of preference; each key file outside the repository.
@@ -18,7 +18,8 @@ object Main:
     args.headOption match
       case Some("contracts") => println(Contracts.build())
       case Some("demo") =>
-        Agent.demo(Files.compiled, Files.invoices(args.lift(1).getOrElse("demo/invoices"))).foreach(_._1.foreach(show))
+        Agent.demo(Files.compiled, Files.invoices(args.lift(1).getOrElse("demo/invoices")))
+          .foreach(_.entries.foreach(show))
       case Some("run") if args.size == 3 =>
         val cfg = js.JSON.parse(Files.read(args(1)))
         val abi = Files.compiled.contracts.SpendPolicy.abi

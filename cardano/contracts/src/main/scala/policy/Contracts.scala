@@ -14,7 +14,7 @@ object SpendPolicyContract extends Contract {
     lazy val compiled = PlutusV3.compile(SpendPolicy.validate)
     lazy val blueprint = Blueprint.plutusV3[TxOutRef, PolicyState, PolicyAction](
       title = "Spend policy",
-      description = "An agent's allowance in a stablecoin: the budget at the script, the owner's rules on every payment.",
+      description = "An agent's allowance in a stablecoin: a budget at the script, the owner's rules on it.",
       version = "0.1.0",
       license = Some("Apache-2.0"),
       // the seed is applied as Data; the cast only relabels the phantom type (as okay-invest's vault)

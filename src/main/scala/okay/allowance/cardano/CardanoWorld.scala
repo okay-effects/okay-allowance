@@ -140,7 +140,8 @@ final class CardanoWorld(payees: Seq[(String, Double, Long)] = CardanoWorld.life
       val args: Vector[js.Any] = reason match
         case "OverMax" => Vector(big(amount), big(st.maxPayment))
         case "PayeeNotAllowed" => Vector(to)
-        case "PayeeCap" => Vector(to, big(p.fold(BigInt(0))(x => if x.window == w then x.spent else BigInt(0)) + amount),
+        case "PayeeCap" => Vector(to, big(p.fold(BigInt(0))(x => if x.window == w then x.spent else BigInt(0)) +
+          amount),
           big(p.fold(BigInt(0))(_.cap)))
         case "PeriodCap" => Vector(big((if st.window == w then st.spent else BigInt(0)) + amount), big(st.periodCap))
         case "TooSoon" => Vector(to, big(p.fold(BigInt(0))(x => (x.last + x.gap) / 1000)))

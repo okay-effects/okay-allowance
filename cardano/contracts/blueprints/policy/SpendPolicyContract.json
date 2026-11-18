@@ -1,7 +1,7 @@
 {
   "preamble": {
     "title": "Spend policy",
-    "description": "An agent's allowance in a stablecoin: the budget at the script, the owner's rules on every payment.",
+    "description": "An agent's allowance in a stablecoin: a budget at the script, the owner's rules on it.",
     "version": "0.1.0",
     "compiler": {
       "name": "scalus",
@@ -13,7 +13,7 @@
   "validators": [
     {
       "title": "Spend policy",
-      "description": "An agent's allowance in a stablecoin: the budget at the script, the owner's rules on every payment.",
+      "description": "An agent's allowance in a stablecoin: a budget at the script, the owner's rules on it.",
       "redeemer": {
         "title": "PolicyAction",
         "schema": {

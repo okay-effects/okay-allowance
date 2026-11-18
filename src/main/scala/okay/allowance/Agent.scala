@@ -4,6 +4,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.scalajs.js
 import okay.scala3.*
 import okay.scala3.std.*
+import okay.allowance.cardano.CardanoWorld
 
 /** an invoice as the agent reads it: its id, the payee's name, an address if the invoice names one, the amount, the
  * currency, the chain if it names one, what it is for */
@@ -180,22 +181,29 @@ object Agent:
          journal: Entry => Unit = _ => ())(using ExecutionContext): Future[Vector[Entry]] =
     Async.toFuture(Journal.to(journal)(Ledger.on(nodes)(run[OnChains](invoices, book, chains))))
 
-  /** THE DEMO: two chains in memory at once ("ethereum", "base"), each the life's policy (set up, no bill paid); the
-   * owner's address book with each payee's chains; the invoices */
-  val demoChains = Vector("ethereum", "base")
-  def demo(compiled: js.Dynamic, invoices: Seq[Invoice])(using ExecutionContext)
-      : Future[(Vector[Entry], Map[String, World], Book)] =
+  /** THE DEMO: three chains in memory at once — two EVM ("ethereum", "base"), each the life's policy (set up, no
+   * bill paid), and Cardano (Scalus's ledger emulator, the same rules, 1 000 on the policy); the owner's address book
+   * with each payee's chains; the invoices */
+  val demoChains = Vector("ethereum", "base", "cardano")
+  final case class Demo(entries: Vector[Entry], worlds: Map[String, World], cardano: CardanoWorld, book: Book)
+  def demo(compiled: js.Dynamic, invoices: Seq[Invoice])(using ExecutionContext): Future[Demo] =
     for
       eth <- Life(compiled, stopAfter = "created")
       base <- Life(compiled, stopAfter = "created")
+      ada = CardanoWorld()
+      _ = ada.create().left.foreach(r => throw new RuntimeException(s"the Cardano policy: $r"))
       worlds = Map("ethereum" -> eth, "base" -> base)
       p = eth.parties
       book = Book(Map(
-        "Internet provider" -> Map("ethereum" -> p("internet provider").address),
+        "Internet provider" -> Map("ethereum" -> p("internet provider").address,
+          "cardano" -> ada.address("internet provider")),
         "Cloud hosting" -> Map("base" -> p("cloud hosting").address),
-        "Electricity" -> Map("ethereum" -> p("electricity").address, "base" -> p("electricity").address),
+        "Electricity" -> Map("ethereum" -> p("electricity").address, "base" -> p("electricity").address,
+          "cardano" -> ada.address("electricity")),
         "Software licence" -> Map("ethereum" -> p("software licence").address),
-        "Gym" -> Map("ethereum" -> p("gym").address))) // in the book, not on the policy's list: the contract refuses
-      nodes = worlds.map((name, w) => name -> (MemoryNode(w.chain, w.policy, w.parties("agent")): Node))
+        // in the book, not on the policy's list: the contract refuses
+        "Gym" -> Map("ethereum" -> p("gym").address, "cardano" -> ada.address("gym"))))
+      nodes = worlds.map((name, w) => name -> (MemoryNode(w.chain, w.policy, w.parties("agent")): Node)) +
+        ("cardano" -> ada.node)
       entries <- on(nodes, demoChains, invoices, book)
-    yield (entries, worlds, book)
+    yield Demo(entries, worlds, ada, book)
