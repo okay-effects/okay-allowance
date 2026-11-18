@@ -34,6 +34,10 @@
   contract's earliest date), checked over stdio; McpSuite 2 tests. Was: (§12) MCP tools `address_book` and `bills` (payment windows from–to, state paid/waiting/
   due/upcoming/overdue, earliest by the contract); Bill + demo/bills.json + config "bills"; Node.paid(invoice);
   McpServer(bills, today); McpSuite; docs/mcp.md.
+- [~] **plan** — (§13) agent proposes, owner reviews (approve, check/uncheck, edit, remove), agent pays due in
+  turn; monthly series roll on; Plan.scala (pure ops + PlanStore memory/file), Agent.payDue, McpServer roles
+  agent/owner/demo, tools add_invoice, plan, pay_due, approve, check, uncheck, edit, remove; CLI intake, pay-due;
+  McpSuite rewritten for the flow; docs/mcp.md.
 - [ ] **solana** — later, only for a reason: Rust/Anchor, an SPL delegate as the allowance.
 - [ ] **page** — the owner's view in the browser's EVM, then through a wallet on a testnet (§4.4).
 - [ ] **testnet** — deploy on the hackathon's chain (Aevum, QDay) from its public docs; never run its starter kit

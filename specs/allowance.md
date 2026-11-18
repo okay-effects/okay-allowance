@@ -183,3 +183,32 @@ The bills come from the owner: `demo/bills.json` for `mcp demo`, `"bills": [...]
 chain's clock in the demo (2026-01-01 on), the computer's on real nodes. Each node gains `paid(invoice)`.
 The window is shown, not enforced: `pay` of a bill outside it is judged as any invoice (BACKLOG: the agent refusing
 outside the window).
+
+## 13. The plan: the agent proposes, the owner reviews, the agent pays in turn (2026-11-18, the owner)
+
+The agent no longer pays an invoice the moment it reads it. It works through a PLAN, data both sides share:
+
+1. INTAKE (the agent): each invoice judged as before (the payee from the book, never the invoice's address; the
+   chain chosen) and tried on its chain; added to the plan as PROPOSED with its window (from – to; an invoice
+   without one: from today, to its due date or a week on) and the agent's note (e.g. "the contract would refuse it
+   now: the payee's cap"). An invoice the agent refuses (fraud, unknown payee) is listed as refused, never payable.
+   An invoice already in the plan is not added twice.
+2. REVIEW (the owner): the plan listed — each payment with its checkbox; APPROVE (some or all), UNCHECK for this
+   time / CHECK again, EDIT (amount, window, monthly or once), REMOVE (gone; a monthly one stops for good).
+3. PAYMENT (the agent): `pay_due` pays, one after another, the payments approved, checked, not yet paid, whose
+   window is open today — the earliest deadline first. Each through the agent's judgement and the contract, as
+   before: paid (the transaction), waiting for the owner's signature (above the contract's threshold), not yet
+   (TooSoon, a cap, the balance, paused: tried again on the next run while the window is open), refused (for good:
+   not allowed, the agent's own refusal). AlreadyPaid on the chain is recorded as paid.
+4. MONTHLY payments: a plan entry `every: month` comes again: when paid, or when its window ends unpaid (skipped:
+   unchecked; missed: not approved or never possible), the next month's is added — approved as the standing order
+   was, checked. Its invoice id: the series and the month (`INT/2026-02`), so the contract's once-only holds.
+
+The plan is the owner's control above the contract: the contract still bounds every payment, whatever the plan
+says. The roles are separate doors: `mcp agent` (check_payment, add_invoice, plan, pay_due, status, requests,
+address_book) and `mcp owner` (plan, approve, check, uncheck, edit, remove, status, requests, address_book) — the
+agent cannot approve its own proposals; in a real setting the owner's server runs only in the owner's client and
+needs no key. `mcp demo` serves both in one process (three chains in memory). The plan is a JSON file for real
+nodes (`"plan"` in the config, shared by the two servers), memory in the demo. Direct `pay` is gone from MCP.
+The owner's standing orders (`demo/bills.json`, `"bills"` in a config) seed the plan, approved. `bills` (§12)
+becomes `plan`. The CLI: `intake CONFIG DIR` adds a folder of invoices; `pay-due CONFIG` runs the payments (cron).
