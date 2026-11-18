@@ -9,7 +9,9 @@
   withdraw, close; the tests and the demo from it. DONE on EVM: pay moves the contract's own balance
   (InsufficientBalance(balance, amount) past it); deposit by anyone, withdraw/close owner only, close pauses and
   drops the agent; the owner's wallet is never touched by a payment (tested). 9/9 suites. Cardano follows the same.
-- [ ] **mcp** — the policy's door as an MCP server (§8.3): check_payment, pay, status, requests; Scala on okay-mcp.
+- [~] **mcp** — the MCP server (§10): tools check_payment, pay, status, requests over the agent (Agent.on, decide,
+  Node.trial) on okay-mcp 0.1.0 (sjs1) + okay-effects-async 0.1.1 — `Servers.dispatch[Async]` per stdin line to a
+  Future; Node.status (EVM views / Cardano datum); `main.js mcp demo|CONFIG`; McpSuite drives JSON lines.
 - [ ] **rules** — one Scala model of the owner's rules (§6), each chain's policy set up from it.
 - [x] **cardano** — DONE 2026-11-18: validator 23 checks (cardano/contracts PolicySpec), 5.5 KB with error names;
   CardanoWorld on the emulator: a life (CardanoSuite) and the agent on three chains (15 invoices, Cardano: paid,

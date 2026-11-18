@@ -132,3 +132,24 @@ Three ways to spend it:
 Invoices once, compactly: kept for this window and the one before, then forgotten. The agent's own journal refuses
 an older one; on-chain an invoice older than two periods could be paid again — bounded by the payee's cap and gap.
 (SpendPolicy.sol keeps every id forever: storage on EVM is a map, on Cardano a datum that every payment rewrites.)
+
+## 10. The MCP server (2026-11-18)
+
+The other way in (§8.3): the policy's door as MCP tools, so any AI agent — Claude Desktop, Claude Code, Cursor —
+pays bills through it. The server holds the agent's keys (one a chain) and the owner's address book; the model
+holds neither. Every call goes through the same judgement as the agent's (the payee by name from the book, never
+an address from the model; an address it names must match the book's) and then through the contract.
+
+Tools:
+- `check_payment` {payee, amount, invoice, chain?, address?} — the judgement and a TRIAL on the chain; nothing
+  written: would it be paid, wait for the owner, or be refused — and why, in words.
+- `pay` {same} — one invoice through the agent (Agent.on, the same program): paid, waiting (a request for the
+  owner) or refused, in words, with the chain and the transaction.
+- `status` {chain?} — each chain's policy: its balance, this period's spending and cap, the most a payment, the
+  approval threshold, paused, the end; each payee of the book there: its cap, this period's spending, when next.
+- `requests` — the payments this server asked the owner to approve, still waiting.
+
+On okay-mcp (okay-simple effects): `Servers.dispatch` on the machine with the async module — each line from stdin
+one dispatch run to a Future, the tools' chain calls `fromFuture`; stdout only for the protocol, logs to stderr.
+`main.js mcp demo` serves the three chains in memory (the demo's book); `main.js mcp CONFIG.json` real nodes, the
+config as `run`'s. Each chain's node gains `status` (EVM: the contract's views; Cardano: the datum).
