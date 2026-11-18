@@ -14,8 +14,15 @@ object Files:
   def list(dir: String): Vector[String] = fs.readdirSync(dir).asInstanceOf[js.Array[String]].toVector.sorted
   def args: Vector[String] = js.Dynamic.global.process.argv.asInstanceOf[js.Array[String]].toVector.drop(2)
 
+  /** THE REPOSITORY: the working directory if it holds out/contracts.json, else the one above the running script
+   * (target/scala-3.3.8/okay-allowance-fastopt/main.js) — an MCP client starts the server from anywhere */
+  lazy val home: String =
+    val script = js.Dynamic.global.process.argv.asInstanceOf[js.Array[String]].lift(1).getOrElse("")
+    val above = Iterator.iterate(script)(p => p.take(p.lastIndexOf("/") max 0)).drop(1).takeWhile(_.nonEmpty)
+    ("." +: above.toVector).find(d => fs.existsSync(s"$d/out/contracts.json").asInstanceOf[Boolean]).getOrElse(".")
+
   /** the compiled contracts, written by `contracts` */
-  def compiled: js.Dynamic = js.JSON.parse(read("out/contracts.json"))
+  def compiled: js.Dynamic = js.JSON.parse(read(s"$home/out/contracts.json"))
   /** a folder of invoices (*.json), in name order */
   def invoices(dir: String): Vector[Invoice] =
     list(dir).filter(_.endsWith(".json")).map(f => Invoice.parse(read(s"$dir/$f")))

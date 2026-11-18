@@ -12,7 +12,7 @@ import scalus.cardano.txbuilder.TransactionSigner
 import scalus.cardano.wallet.hd.HdAccount
 import scalus.crypto.ed25519.given
 import scalus.uplc.builtin.{ByteString, Data}
-import okay.allowance.{Event, Node, Outcome}
+import okay.allowance.{Event, Node, Outcome, PayeeStatus, Status}
 
 /**
  * THE POLICY ON A CARDANO LEDGER IN MEMORY (specs/allowance.md §9): Scalus's ledger emulator — real transactions,
@@ -150,6 +150,17 @@ final class CardanoWorld(payees: Seq[(String, Double, Long)] = CardanoWorld.life
         case _ => Vector.empty
       Outcome(false, Some(reason), args, 0, None, Vector.empty, "")
     private def amountOf(a: js.BigInt) = BigInt(a.toString)
+    def status(payees: Seq[String]): Future[Status] = Future.successful {
+      val st = state
+      val w = (BigInt(now) - st.start) / st.period
+      Status(balance, if st.window == w then st.spent else 0, st.periodCap, st.maxPayment, st.approvalAbove,
+        st.paused, (st.expires / 1000).toLong, payees.toVector.map { a =>
+          st.payee(Policy.credential(Address.fromBech32(a))) match
+            case Some(p) => PayeeStatus(a, true, p.cap, if p.window == w then p.spent else 0,
+              if p.last == 0 || p.gap == 0 then 0 else ((p.last + p.gap) / 1000).toLong)
+            case None => PayeeStatus(a, false, 0, 0, 0)
+        })
+    }
     def trial(to: String, amount: js.BigInt, invoice: String): Future[Outcome] = Future.successful {
       val x = amountOf(amount)
       CardanoWorld.this.pay(Address.fromBech32(to), x, inv(invoice), send = false) match

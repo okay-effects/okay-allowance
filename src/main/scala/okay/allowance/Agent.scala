@@ -43,17 +43,47 @@ enum Ledger[X]:
 enum Journal[X]:
   case Write(entry: Entry) extends Journal[Unit]
 
-/** ONE CHAIN'S NODE, as a Ledger handler asks it: a trial and a payment of the owner's policy there */
+/** a payee's standing on a policy: its address there, allowed, its cap a period, paid this period, the earliest time
+ * of its next payment (seconds; 0: any time) */
+final case class PayeeStatus(address: String, allowed: Boolean, cap: BigInt, spent: BigInt, nextAt: Long)
+
+/** A POLICY'S STANDING, the same on every chain: its balance, this period's spending and cap, the most a payment, the
+ * owner's approval above, paused, its end (seconds), the payees asked about (amounts in the token's 8 decimals) */
+final case class Status(balance: BigInt, spent: BigInt, periodCap: BigInt, maxPayment: BigInt, approvalAbove: BigInt,
+                        paused: Boolean, expires: Long, payees: Vector[PayeeStatus])
+
+/** ONE CHAIN'S NODE, as a Ledger handler asks it: a trial and a payment of the owner's policy there; its standing */
 trait Node:
   def trial(to: String, amount: js.BigInt, invoice: String): Future[Outcome]
   def pay(to: String, amount: js.BigInt, invoice: String): Future[Outcome]
+  def status(payees: Seq[String]): Future[Status]
+
+/** SpendPolicy.sol's standing from its views, by `read(function, args)` — the chain in memory's or an RPC node's */
+object EvmStatus:
+  def apply(read: (String, Seq[js.Any]) => Future[js.Dynamic], payees: Seq[String])(using ExecutionContext)
+      : Future[Status] =
+    def big(x: js.Any) = BigInt(x.toString)
+    def one(fn: String) = read(fn, Nil)
+    for
+      balance <- one("balance"); spent <- one("spent"); spentPeriod <- one("spentPeriod")
+      now <- one("currentPeriod"); cap <- one("periodCap"); max <- one("maxPayment")
+      above <- one("approvalAbove"); paused <- one("paused"); expires <- one("expiresAt")
+      ps <- Life.inOrder(payees)(a => read("payees", Seq(a)).map { p =>
+        val f = p.asInstanceOf[js.Array[js.Any]]
+        val last = big(f(5)).toLong
+        PayeeStatus(a, f(0).asInstanceOf[Boolean], big(f(1)), if big(f(4)) == big(now) then big(f(3)) else 0,
+          if last == 0 || big(f(2)) == 0 then 0 else last + big(f(2)).toLong)
+      })
+    yield Status(big(balance), if big(spentPeriod) == big(now) then big(spent) else 0, big(cap), big(max), big(above),
+      paused.asInstanceOf[Boolean], big(expires).toLong, ps)
 
 /** the policy on the chain in memory (Chain): the tests', the demo's, the page's */
-final class MemoryNode(c: Chain, policy: String, agent: Party) extends Node:
+final class MemoryNode(c: Chain, policy: String, agent: Party)(using ExecutionContext) extends Node:
   def trial(to: String, amount: js.BigInt, invoice: String) =
     c.simulate(agent, policy, "SpendPolicy", "pay", to, amount, invoice)
   def pay(to: String, amount: js.BigInt, invoice: String) =
     c.call(agent, policy, "SpendPolicy", "pay", to, amount, invoice)
+  def status(payees: Seq[String]) = EvmStatus((fn, args) => c.view(policy, "SpendPolicy", fn, args*), payees)
 
 object Ledger:
   def trial[R[_]](chain: String, to: String, amount: js.BigInt, invoice: String)(using In[Ledger, R]): Outcome ! R =
@@ -185,7 +215,8 @@ object Agent:
    * bill paid), and Cardano (Scalus's ledger emulator, the same rules, 1 000 on the policy); the owner's address book
    * with each payee's chains; the invoices */
   val demoChains = Vector("ethereum", "base", "cardano")
-  final case class Demo(entries: Vector[Entry], worlds: Map[String, World], cardano: CardanoWorld, book: Book)
+  final case class Demo(entries: Vector[Entry], worlds: Map[String, World], cardano: CardanoWorld, book: Book,
+                        nodes: Map[String, Node])
   def demo(compiled: js.Dynamic, invoices: Seq[Invoice])(using ExecutionContext): Future[Demo] =
     for
       eth <- Life(compiled, stopAfter = "created")
@@ -206,4 +237,4 @@ object Agent:
       nodes = worlds.map((name, w) => name -> (MemoryNode(w.chain, w.policy, w.parties("agent")): Node)) +
         ("cardano" -> ada.node)
       entries <- on(nodes, demoChains, invoices, book)
-    yield Demo(entries, worlds, ada, book)
+    yield Demo(entries, worlds, ada, book, nodes)
