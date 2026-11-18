@@ -1,9 +1,17 @@
-# The policy's door over MCP
+# The policy's doors over MCP
 
-Any MCP client (Claude Desktop, Claude Code, Cursor …) can pay the owner's bills through okay-allowance. The server
-holds the agent's keys and the owner's address book; the model never sees a key and cannot name an address the
-book does not hold. Every payment is checked by the agent's judgement, then by the contract on its chain
-(specs/allowance.md §10).
+The agent pays the owner's bills by a PLAN (specs/allowance.md §13): it takes invoices in and proposes them; the
+owner reviews the plan — approves, unchecks for this time, edits, removes —; the agent pays, one after another,
+what is approved, checked and due. Every payment goes through the agent's judgement (the payee from the owner's
+address book, never an address from the invoice) and then through the contract on its chain, which bounds it
+whatever the plan says. The model never sees a key.
+
+Two doors, two MCP servers:
+- **the agent's** (`mcp agent CONFIG`) — it holds the agent's keys; it cannot approve its own proposals;
+- **the owner's** (`mcp owner CONFIG`) — no key needed (it only reads the chains); run it only in the owner's client.
+
+They share the plan file (`"plan"` in the config). `mcp demo` serves both doors in one process, on Ethereum, Base
+and Cardano in memory (no network, no money), the demo's clock starting on 2026-01-01.
 
 ## Build
 
@@ -11,13 +19,6 @@ book does not hold. Every payment is checked by the agent's judgement, then by t
 npm install
 sbt fastLinkJS
 ```
-
-## Run
-
-- `node target/scala-3.3.8/okay-allowance-fastopt/main.js mcp demo` — the demo: Ethereum, Base and Cardano in
-  memory (no network, no money), the demo's address book, 1 000 tUSD8 on each policy.
-- `node target/scala-3.3.8/okay-allowance-fastopt/main.js mcp CONFIG.json` — real nodes; the config as for `run`
-  (chains with their RPC, chain id, policy and the agent's key file; the book), kept outside the repository.
 
 ## Claude Desktop
 
@@ -34,25 +35,32 @@ In `claude_desktop_config.json` (Settings → Developer → Edit Config):
 }
 ```
 
-Claude Code: `claude mcp add okay-allowance -- node /path/to/okay-allowance/target/scala-3.3.8/okay-allowance-fastopt/main.js mcp demo`.
+For real nodes: one entry with `"mcp", "agent", "/path/to/config.json"` where the agent runs, one with
+`"mcp", "owner", "/path/to/config.json"` in the owner's own client. Claude Code:
+`claude mcp add okay-allowance -- node /path/to/okay-allowance/target/scala-3.3.8/okay-allowance-fastopt/main.js mcp demo`.
 
 ## Tools
 
-| tool | what it does |
-|---|---|
-| `check_payment` | the agent's judgement and a trial on the chain; nothing written — would be paid, would wait for the owner, refused and why |
-| `pay` | one invoice through the agent: paid, waiting for the owner's approval, or refused (by the agent or the contract), in words |
-| `status` | each chain's policy: balance, this period's spending and cap, limits; each payee's cap, spending, next possible payment |
-| `requests` | the payments waiting for the owner's approval |
-| `address_book` | the owner's address book: each payee's address on each chain, allowed there or not, its cap |
-| `bills` | the payments to make, each with its window (from – to): paid, waiting for the owner, due now, upcoming, overdue; the earliest date the contract allows; `state` filters (due, upcoming, overdue, paid, waiting, open) |
+| door | tool | what it does |
+|---|---|---|
+| agent | `add_invoice` | takes an invoice into the plan: judged, tried on its chain, PROPOSED with its window (`from`, `to`; default today and a week) and `every` (once / month), with the agent's note; refused ones listed as refused |
+| agent | `pay_due` | pays in turn what is approved, checked and due today, the earliest deadline first: paid, waiting for the owner's signature, not yet (tried again), refused |
+| agent | `check_payment` | would this invoice be paid now? nothing written |
+| owner | `approve` | `invoices: [...]` or `all: true` |
+| owner | `uncheck` / `check` | not this time (a monthly one comes again next month) / again |
+| owner | `edit` | `amount`, `from`, `to`, `every` of a payment not yet made |
+| owner | `remove` | gone from the plan; a monthly one stops for good |
+| both | `plan` | the plan: `[x]` approved, `[ ]` unchecked, `[?]` proposed; window, state, payee, amount, chain, note, the earliest date the contract allows; `state` filters |
+| both | `status` | each chain's policy: balance, this period's spending and cap, limits; each payee's |
+| both | `requests` | payments waiting for the owner's signature on the chain |
+| both | `address_book` | each payee's address on each chain, allowed there or not, its cap |
 
-Arguments of `check_payment` and `pay`: `payee` (a name in the book), `amount` (tUSD8, e.g. `"49.99"`), `invoice`
-(its id; each is paid once), and if the invoice has them, `chain`, `address` (checked against the book, never used)
-and `for`.
+The owner's standing orders seed the plan, approved: `demo/bills.json` in the demo, `"bills"` in a config —
+`{ "invoice", "payee", "amount", "chain"?, "for"?, "from": "YYYY-MM-DD", "to": "YYYY-MM-DD", "every"? }`; a monthly
+one's payments are `INVOICE/YYYY-MM` and come again each month (when paid, or when the window ends unpaid).
 
-The bills come from the owner: `demo/bills.json` in the demo (its clock starts on 2026-01-01), `"bills"` in a
-config — `{ "invoice", "payee", "amount", "chain"?, "for"?, "from": "YYYY-MM-DD", "to": "YYYY-MM-DD" }`.
+Without MCP: `main.js intake CONFIG DIR` takes a folder of invoices into the plan; `main.js pay-due CONFIG` pays
+what is due (for cron).
 
-Try: "Pay the internet bill INT-11, 49.99 tUSD8, to the Internet provider." — then the same again (refused: already
-paid), then "What bills are due?", then "Pay electricity 140 on Cardano, invoice POWER-ADA" (waits for the owner), then "What is the status?".
+Try in the demo: "Show the plan." — "Add the invoice SW-EXTRA: 20 tUSD8 to the Software licence, one more seat, by
+the end of January." — "Uncheck the summer house electricity this time." — "Approve SW-EXTRA." — "Pay what is due."

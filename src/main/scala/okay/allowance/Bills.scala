@@ -3,9 +3,10 @@ package okay.allowance
 import scala.scalajs.js
 
 /** A BILL TO PAY (specs/allowance.md §12): the owner's — its invoice, the payee by name, the amount, the chain if
- * fixed, what it is for, and its payment window: from and to (days, as `YYYY-MM-DD`; to inclusive) */
+ * fixed, what it is for, and its payment window: from and to (days, as `YYYY-MM-DD`; to inclusive); once, or every
+ * month */
 final case class Bill(invoice: String, payee: String, amount: String, chain: Option[String], about: String,
-                      from: String, to: String):
+                      from: String, to: String, every: String = "once"):
   /** as an invoice the agent pays */
   def toInvoice: Invoice = Invoice(invoice, payee, None, amount, None, about, chain)
   /** the window in seconds: from its first second to its last day's end */
@@ -23,11 +24,8 @@ object Bill:
     else a.asInstanceOf[js.Array[js.Dynamic]].toVector.map { o =>
       def opt(k: String) = Option(o.selectDynamic(k)).filterNot(js.isUndefined).map(_.toString).filter(_.nonEmpty)
       val bill = Bill(o.invoice.toString, o.payee.toString, o.amount.toString, opt("chain"), opt("for").getOrElse(""),
-        o.from.toString, o.to.toString)
+        o.from.toString, o.to.toString, opt("every").getOrElse("once"))
       require(bill.opens > 0 && bill.closes >= bill.opens, s"bill ${bill.invoice}: a window from ≤ to as YYYY-MM-DD")
       bill
     }
 
-/** a bill's state today: paid, waiting for the owner, due now, upcoming, overdue — the chain it goes to, and the
- * earliest the contract allows when the payee's gap ends after the window opens (seconds; 0: no such limit) */
-final case class BillState(bill: Bill, state: String, chain: String, earliest: Long)

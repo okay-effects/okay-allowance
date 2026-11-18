@@ -9,6 +9,7 @@ object Files:
   private def fs = Fs.asInstanceOf[js.Dynamic]
   def read(path: String): String = fs.readFileSync(path, "utf8").asInstanceOf[String]
   def write(path: String, text: String): Unit = fs.writeFileSync(path, text)
+  def exists(path: String): Boolean = fs.existsSync(path).asInstanceOf[Boolean]
   def append(path: String, text: String): Unit = fs.appendFileSync(path, text)
   def mkdirs(path: String): Unit = fs.mkdirSync(path, js.Dynamic.literal(recursive = true))
   def list(dir: String): Vector[String] = fs.readdirSync(dir).asInstanceOf[js.Array[String]].toVector.sorted

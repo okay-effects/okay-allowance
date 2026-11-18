@@ -3,3 +3,4 @@ journal.jsonl
 *.key
 target/
 project/target/
+plan.json

@@ -34,7 +34,9 @@
   contract's earliest date), checked over stdio; McpSuite 2 tests. Was: (§12) MCP tools `address_book` and `bills` (payment windows from–to, state paid/waiting/
   due/upcoming/overdue, earliest by the contract); Bill + demo/bills.json + config "bills"; Node.paid(invoice);
   McpServer(bills, today); McpSuite; docs/mcp.md.
-- [~] **plan** — (§13) agent proposes, owner reviews (approve, check/uncheck, edit, remove), agent pays due in
+- [x] **plan** — DONE 2026-11-18: Plan.scala (data + MemoryPlan/FilePlan), Planner (intake, payDue, refresh),
+  McpServer roles Agent/Owner/Demo; PlanSuite 5 + McpSuite 2 (the whole flow incl. the owner signing on chain);
+  checked over stdio. Not run: intake/pay-due/mcp agent|owner on real nodes (no testnet yet). Was: (§13) agent proposes, owner reviews (approve, check/uncheck, edit, remove), agent pays due in
   turn; monthly series roll on; Plan.scala (pure ops + PlanStore memory/file), Agent.payDue, McpServer roles
   agent/owner/demo, tools add_invoice, plan, pay_due, approve, check, uncheck, edit, remove; CLI intake, pay-due;
   McpSuite rewritten for the flow; docs/mcp.md.
