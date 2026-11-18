@@ -7,7 +7,8 @@ import { createBlock } from '@ethereumjs/block';
 import { Common, Mainnet, Hardfork } from '@ethereumjs/common';
 import { createAddressFromPrivateKey, createAccount, createAddressFromString, hexToBytes, bytesToHex }
   from '@ethereumjs/util';
-import { encodeFunctionData, decodeFunctionResult, decodeErrorResult, encodeDeployData, keccak256, toHex } from 'viem';
+import { encodeFunctionData, decodeFunctionResult, decodeErrorResult, encodeDeployData, keccak256, toHex,
+  decodeEventLog } from 'viem';
 
 export async function chain(compiled) {
   const common = new Common({ chain: Mainnet, hardfork: Hardfork.Cancun });
@@ -34,13 +35,38 @@ export async function chain(compiled) {
     const r = await runTx(vm, { tx, block: block(), skipBlockGasLimitValidation: true, skipHardForkValidation: true });
     number++;
     const ex = r.execResult;
-    let reason = null;
-    if (ex.exceptionError) {
-      const ret = bytesToHex(ex.returnValue);
-      try { reason = decodeErrorResult({ abi: [...abi, ...abiOf('SpendPolicy')], data: ret }).errorName; }
-      catch { reason = ret === '0x' ? ex.exceptionError.error : 'reverted ' + ret.slice(0, 10); }
-    }
-    return { ok: !ex.exceptionError, reason, gas: Number(r.totalGasSpent), created: r.createdAddress?.toString() };
+    const { reason, args } = why(ex, abi);
+    // the transaction's events, decoded by the contracts' ABIs (Paid, Requested, …)
+    const events = (r.receipt?.logs ?? []).flatMap(([, topics, data]) => {
+      for (const c of Object.values(compiled.contracts)) {
+        try { return [decodeEventLog({ abi: c.abi, topics: topics.map(bytesToHex), data: bytesToHex(data) })]; }
+        catch {}
+      }
+      return [];
+    });
+    return { ok: !ex.exceptionError, reason, args, gas: Number(r.totalGasSpent), created: r.createdAddress?.toString(),
+      events, hash: bytesToHex(tx.hash()) };
+  }
+
+  /** a refusal's own error, its name and arguments (TooSoon(payee, nextAt)) */
+  function why(ex, abi) {
+    if (!ex.exceptionError) return { reason: null, args: [] };
+    const ret = bytesToHex(ex.returnValue);
+    try {
+      const e = decodeErrorResult({ abi: [...abi, ...abiOf('SpendPolicy')], data: ret });
+      return { reason: e.errorName, args: e.args ?? [] };
+    } catch { return { reason: ret === '0x' ? ex.exceptionError.error : 'reverted ' + ret.slice(0, 10), args: [] }; }
+  }
+
+  /** A TRIAL: the call run as `from` would run it, nothing written, no gas paid — would it pass, and why not */
+  async function simulate(from, to, name, fn, args = []) {
+    await vm.stateManager.checkpoint(); // what the trial writes is rolled back below
+    const r = await vm.evm.runCall({ to: createAddressFromString(to), caller: createAddressFromString(from.address),
+      origin: createAddressFromString(from.address), block: block(),
+      data: hexToBytes(encodeFunctionData({ abi: abiOf(name), functionName: fn, args })) });
+    await vm.stateManager.revert();
+    const { reason, args: a } = why(r.execResult, abiOf(name));
+    return { ok: !r.execResult.exceptionError, reason, args: a };
   }
 
   async function deploy(from, name, args = []) {
@@ -58,5 +84,5 @@ export async function chain(compiled) {
     return decodeFunctionResult({ abi: abiOf(name), functionName: fn, data: bytesToHex(r.execResult.returnValue) });
   }
   const encode = (name, fn, args) => encodeFunctionData({ abi: abiOf(name), functionName: fn, args });
-  return { party, deploy, call, view, encode, advance: s => { time += BigInt(s); }, now: () => time };
+  return { party, deploy, call, view, simulate, encode, advance: s => { time += BigInt(s); }, now: () => time };
 }

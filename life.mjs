@@ -8,12 +8,13 @@ export const DAY = 86_400;
 const usd = x => BigInt(Math.round(x * 100)) * 10n ** 6n; // 8 decimals, as tUSD8
 export const invoice = id => keccak256(toHex(id));
 
-export async function life(compiled) {
+/** `stopAfter: 'created'`: the policy set up, no bills paid (the agent's demo plays its own) */
+export async function life(compiled, opts = {}) {
   const c = await chain(compiled);
   const owner = await c.party('owner'), agent = await c.party('agent'), stranger = await c.party('stranger');
   const internet = await c.party('internet provider'), cloud = await c.party('cloud hosting'),
     power = await c.party('electricity'), software = await c.party('software licence'),
-    attacker = await c.party('attacker');
+    attacker = await c.party('attacker'), gym = await c.party('gym');
   const token = await c.deploy(owner, 'TestUSD', ['Test USD (8 decimals)', 'tUSD8', 8]);
   await c.call(owner, token, 'TestUSD', 'mint', [owner.address, usd(5_000)]);
   const steps = [];
@@ -33,6 +34,9 @@ export async function life(compiled) {
   for (const [p, cap, gap] of [[internet, 60, 25], [cloud, 200, 0], [power, 150, 25], [software, 100, 0]])
     await c.call(owner, policy, 'SpendPolicy', 'setPayee', [p.address, true, usd(cap), BigInt(gap * DAY)]);
   await step('created', await c.call(owner, token, 'TestUSD', 'approve', [policy, usd(1_000)]));
+  const result = () => ({ compiler: compiled.compiler, steps, chain: c, policy, token, usd,
+    parties: { owner, agent, stranger, internet, cloud, power, software, attacker, gym } });
+  if (opts.stopAfter === 'created') return result();
   // 2. the internet bill, 49.99
   await step('internet', await pay(agent, internet, 49.99, 'INT-2026-11'));
   // 3. the cloud bill, 85
@@ -61,6 +65,5 @@ export async function life(compiled) {
   // 13. the owner pauses the agent
   await c.call(owner, policy, 'SpendPolicy', 'setPaused', [true]);
   await step('paused', await pay(agent, cloud, 20, 'CLOUD-2026-12'));
-  return { compiler: compiled.compiler, steps, chain: c, policy, token, usd,
-    parties: { owner, agent, stranger, internet, cloud, power, software, attacker } };
+  return result();
 }

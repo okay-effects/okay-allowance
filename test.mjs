@@ -3,6 +3,8 @@
 // `node build.mjs && node test.mjs` — exits 1 on any failure.
 import fs from 'node:fs';
 import { life, DAY, invoice } from './life.mjs';
+import { demo, decide, explain } from './agent.mjs';
+import path from 'node:path';
 
 const compiled = JSON.parse(fs.readFileSync(new URL('./out/contracts.json', import.meta.url), 'utf8'));
 let failed = 0;
@@ -106,5 +108,39 @@ for (let i = 0; i < n; i++) {
   if (x.ok === model) agreed++; else console.log('  disagree', { i, payee: q.who.name, amount, id, model, x });
 }
 check(`random payments: the contract agreed with the model ${agreed}/${n}`, agreed === n);
+// THE AGENT (agent.mjs) on the demo's invoices: its own refusals, the contract's, the payments, the request
+const dir = path.join(path.dirname(new URL(import.meta.url).pathname), 'demo', 'invoices');
+const invoices = fs.readdirSync(dir).filter(f => f.endsWith('.json')).sort()
+  .map(f => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')));
+const d = await demo(compiled, invoices);
+const got = Object.fromEntries(d.results.map((e, i) => [`${i + 1}:${e.invoice}`, e]));
+const expect = { '1:INT-2026-11': ['paid'], '2:CLOUD-2026-11': ['paid'], '3:POWER-2026-11': ['waiting'],
+  '4:URGENT-9921': ['refused', 'agent', 'address-mismatch'], '5:CI-77': ['refused', 'agent', 'unknown-payee'],
+  '6:CLOUD-2026-11': ['refused', 'contract', 'AlreadyPaid'],
+  '7:CLOUD-2026-11-EXTRA': ['refused', 'contract', 'PayeeCap'], '8:INT-2026-11-B': ['refused', 'contract', 'TooSoon'],
+  '9:SW-2026-11': ['paid'], '10:GYM-2026-11': ['refused', 'contract', 'PayeeNotAllowed'] };
+for (const [k, [status, by, reason]] of Object.entries(expect)) {
+  const e = got[k];
+  check(`agent: ${k} ${status}${reason ? ` (${by}: ${reason})` : ''}`,
+    e && e.status === status && (!reason || (e.by === by && e.reason === reason)), JSON.stringify(e));
+}
+check('agent: every refusal said in words', d.results.filter(e => e.status === 'refused').every(e =>
+  e.words && !/undefined|NaN/.test(e.words)));
+check('agent: the payee is never taken from the invoice', decide({ payee: 'Cloud hosting', address: '0xdead',
+  amount: '1' }, { 'Cloud hosting': '0x00000000000000000000000000000000000000c1' }).refuse === 'address-mismatch');
+// a trial writes nothing: the owner's balance and the policy's books the same after it
+const { chain: dc, policy: dp, parties: pp } = d;
+const tokenOf = await dc.view(dp, 'SpendPolicy', 'token');
+const was = await dc.view(tokenOf, 'TestUSD', 'balanceOf', [pp.owner.address]);
+const spentWas = await dc.view(dp, 'SpendPolicy', 'spent');
+const t = await dc.simulate(pp.agent, dp, 'SpendPolicy', 'pay', [pp.software.address, 5n * 10n ** 8n,
+  invoice('TRIAL-ONLY')]);
+check('agent: a trial passes and writes nothing', t.ok &&
+  (await dc.view(tokenOf, 'TestUSD', 'balanceOf', [pp.owner.address])) === was &&
+  (await dc.view(dp, 'SpendPolicy', 'spent')) === spentWas &&
+  !(await dc.view(dp, 'SpendPolicy', 'paidInvoice', [invoice('TRIAL-ONLY')])));
+check('agent: explanations name the contract\'s numbers', explain('PeriodCap', [41_499_000_000n, 40_000_000_000n])
+  .includes('414.99 tUSD8') && explain('PeriodCap', [41_499_000_000n, 40_000_000_000n]).includes('400 tUSD8'));
+
 console.log(failed ? `${failed} FAILED` : 'all passed');
 process.exit(failed ? 1 : 0);
