@@ -14,7 +14,12 @@
   over real stdio from another directory (Files.home). Was: the MCP server (§10): tools check_payment, pay, status, requests over the agent (Agent.on, decide,
   Node.trial) on okay-mcp 0.1.0 (sjs1) + okay-effects-async 0.1.1 — `Servers.dispatch[Async]` per stdin line to a
   Future; Node.status (EVM views / Cardano datum); `main.js mcp demo|CONFIG`; McpSuite drives JSON lines.
-- [ ] **rules** — one Scala model of the owner's rules (§6), each chain's policy set up from it.
+- [~] **rules** — (§11) Rules + Judge (Rules.scala), Life and CardanoWorld from Rules, Cardano checks in the EVM's
+  order, RulesSuite (EVM = model, Cardano = model, 120 random). NOW: Cardano invoice memory as an MPF root (§9):
+  PolicyState.invoices (root) instead of paid/paidBefore; Pay(payee, amount, invoice, proof); script
+  `MerklePatriciaForestry(st.invoices).insert(invoice, empty, proof).root == next.invoices`; off-chain
+  scalus.crypto.trie.MerklePatriciaForestry in CardanoWorld (proveNonMembership; AlreadyPaid when a member);
+  PolicySpec + CardanoSuite + RulesSuite (then the chains agree outright).
 - [x] **cardano** — DONE 2026-11-18: validator 23 checks (cardano/contracts PolicySpec), 5.5 KB with error names;
   CardanoWorld on the emulator: a life (CardanoSuite) and the agent on three chains (15 invoices, Cardano: paid,
   waiting for the owner, refused PayeeNotAllowed). Not yet: a real Cardano node (Blockfrost/Koios via

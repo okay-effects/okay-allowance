@@ -116,7 +116,7 @@ scalus-cardano-ledger (the ledger emulator runs in node and in a page), the same
 
 The datum: owner, agent (key hashes), the token (an asset class), period (ms), start, periodCap, maxPayment,
 approvalAbove, expires, paused; this window's index and spending; the payees — credential, cap, gap, this window's
-spending, the last payment's time; the invoices paid in this window and the one before (32-byte ids).
+spending, the last payment's time; the invoices ever paid, as the 32-byte root of a Merkle Patricia Forestry (MPF).
 
 Three ways to spend it:
 - PAY (the agent signs): the payee's credential, the amount, the invoice. The same checks as SpendPolicy.sol with
@@ -129,9 +129,12 @@ Three ways to spend it:
 - DEPOSIT (anyone): the same state, more of the token, no less ada.
 - OWNER (the owner signs): anything — the rules, withdraw, pause; closing burns the NFT.
 
-Invoices once, compactly: kept for this window and the one before, then forgotten. The agent's own journal refuses
-an older one; on-chain an invoice older than two periods could be paid again — bounded by the payee's cap and gap.
-(SpendPolicy.sol keeps every id forever: storage on EVM is a map, on Cardano a datum that every payment rewrites.)
+Invoices once, forever, in 32 bytes (§11 changed this): the datum holds the root of a Merkle Patricia Forestry of
+the invoices paid (Scalus's on-chain MPF, Aiken-compatible); Pay carries a proof that its invoice is not in it, and
+the next state's root is the old one with the invoice inserted — the script checks both by the proof. The trie
+itself lives off-chain with the payer (rebuilt from the chain's Pay redeemers if lost). Was: the invoices of this
+window and the one before, then forgotten — the rules test (§11) showed old invoices paid again on Cardano (3 in
+120 random payments), so the memory became the EVM's.
 
 ## 10. The MCP server (2026-11-18)
 
@@ -153,3 +156,12 @@ On okay-mcp (okay-simple effects): `Servers.dispatch` on the machine with the as
 one dispatch run to a Future, the tools' chain calls `fromFuture`; stdout only for the protocol, logs to stderr.
 `main.js mcp demo` serves the three chains in memory (the demo's book); `main.js mcp CONFIG.json` real nodes, the
 config as `run`'s. Each chain's node gains `status` (EVM: the contract's views; Cardano: the datum).
+
+## 11. One set of rules (2026-11-18)
+
+`Rules` (Scala): the period, the caps, the most a payment, the approval threshold, the life, the payees — the
+policy on every chain is set up from it (Life on the EVM, CardanoWorld on Cardano). `Judge` is the rules as a
+model, in SpendPolicy.sol's order of checks; the Cardano validator checks in the same order, so a payment breaking
+two rules is refused for the same one on both. RulesSuite: 120 random payments on the EVM contract, on the Cardano
+script and through the model — the three agree on every decision and reason. Its first run found the two-window
+invoice memory on Cardano letting old invoices be paid again; §9 now keeps them forever in an MPF root.

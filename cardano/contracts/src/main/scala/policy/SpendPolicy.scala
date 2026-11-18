@@ -92,11 +92,12 @@ object SpendPolicy extends DataParameterizedValidator {
                 val to = tx.validToOrFail(NoEnd)
                 require(to - from <= hour, WindowTooLong)
                 require(to <= st.expires, Expired)
+                // the rules in SpendPolicy.sol's order: a payment breaking two is refused for the same one on both
                 require(amount > BigInt(0), ZeroAmount)
-                require(amount <= st.maxPayment, OverMax)
                 val p = st.payees.find(x => x.who === payee) match
                     case Option.Some(x) => x
                     case Option.None    => fail(PayeeNotAllowed)
+                require(amount <= st.maxPayment, OverMax)
                 require(from >= st.start, NotStarted)
                 val w = (from - st.start) / st.period
                 require(w >= st.window, BadTime)
@@ -104,11 +105,11 @@ object SpendPolicy extends DataParameterizedValidator {
                 val paidBefore =
                     if w == st.window then st.paidBefore else if w == st.window + 1 then st.paid else List.Nil
                 require(!paidNow.exists(i => i === invoice) && !paidBefore.exists(i => i === invoice), AlreadyPaid)
+                require(p.last == BigInt(0) || from >= p.last + p.gap, TooSoon)
                 val own1 = (if p.window == w then p.spent else BigInt(0)) + amount
                 require(own1 <= p.cap, PayeeCap)
                 val total = (if st.window == w then st.spent else BigInt(0)) + amount
                 require(total <= st.periodCap, PeriodCap)
-                require(p.last == BigInt(0) || from >= p.last + p.gap, TooSoon)
                 if amount > st.approvalAbove then require(tx.isSignedBy(st.owner), NeedsOwner)
                 val balance = own.value.quantityOf(st.token.policy, st.token.name)
                 require(amount <= balance, InsufficientBalance)

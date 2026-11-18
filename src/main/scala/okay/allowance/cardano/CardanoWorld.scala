@@ -12,16 +12,16 @@ import scalus.cardano.txbuilder.TransactionSigner
 import scalus.cardano.wallet.hd.HdAccount
 import scalus.crypto.ed25519.given
 import scalus.uplc.builtin.{ByteString, Data}
-import okay.allowance.{Event, Node, Outcome, PayeeStatus, Status}
+import okay.allowance.{Event, Node, Outcome, PayeeStatus, Rules, Status}
 
 /**
  * THE POLICY ON A CARDANO LEDGER IN MEMORY (specs/allowance.md §9): Scalus's ledger emulator — real transactions,
  * the script run by the ledger's rules, in node and in a page — with demo parties from a public mnemonic (never a
- * real wallet): the owner, the agent, the payees, an attacker. The owner's policy as on the EVM chains: a 30-day
- * window, 400 in it, 300 a payment, the owner's signature above 100, a year; the payees with their caps and gaps;
- * 1 000 tUSD8 (a test token, 8 decimals) on it. `node` is the agent's door to it.
+ * real wallet): the owner, the agent, the payees, an attacker. The owner's policy from the rules, as on the EVM
+ * chains (the demo's: a 30-day window, 400 in it, 300 a payment, the owner's signature above 100, a year; the
+ * payees with their caps and gaps); 1 000 tUSD8 (a test token, 8 decimals) on it. `node` is the agent's door to it.
  */
-final class CardanoWorld(payees: Seq[(String, Double, Long)] = CardanoWorld.lifePayees):
+final class CardanoWorld(rules: Rules = Rules.demo):
   given env: CardanoInfo = CardanoInfo.mainnet
   private val mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
   private val accounts: Map[String, HdAccount] =
@@ -82,10 +82,11 @@ final class CardanoWorld(payees: Seq[(String, Double, Long)] = CardanoWorld.life
     val seed = Utxo(utxos(parties("owner")).find((_, o) => qty(o.value) > 0).get)
     script = Policy.script(TxOutRef(TxId(seed.input.transactionId), BigInt(seed.input.index)))
     val day = BigInt(86_400_000L)
-    val st = PolicyState(keyHash("owner"), keyHash("agent"), AssetClass(tokenPolicy, tokenName.bytes), day * 30,
-      BigInt(now), CardanoWorld.usd(400), CardanoWorld.usd(300), CardanoWorld.usd(100), BigInt(now) + day * 365,
-      false, 0, 0, PList.from(payees.map((n, cap, gap) => Payee(Policy.credential(parties(n)), CardanoWorld.usd(cap),
-        day * gap, 0, 0, 0))), PList.Nil, PList.Nil)
+    val st = PolicyState(keyHash("owner"), keyHash("agent"), AssetClass(tokenPolicy, tokenName.bytes),
+      day * rules.periodDays, BigInt(now), Rules.units(rules.periodCap), Rules.units(rules.maxPayment),
+      Rules.units(rules.approvalAbove), BigInt(now) + day * rules.days, false, 0, 0,
+      PList.from(rules.payees.map(r => Payee(Policy.credential(parties(r.name)), Rules.units(r.cap), day * r.gapDays,
+        0, 0, 0))), PList.Nil, PList.Nil)
     submit(Policy.create(env, seed, script, Value.ada(10) + tusd(CardanoWorld.usd(deposit)), st)
       .complete(availableUtxos = utxos(parties("owner")), sponsor = parties("owner")).sign(signer("owner"))
       .transaction)
@@ -186,11 +187,8 @@ final class CardanoWorld(payees: Seq[(String, Double, Long)] = CardanoWorld.life
 object CardanoWorld:
   val names = Vector("owner", "agent", "stranger", "internet provider", "cloud hosting", "electricity",
     "software licence", "attacker", "gym")
-  /** the EVM life's payees: name, cap a window, the least days between payments */
-  val lifePayees = Vector(("internet provider", 60.0, 25L), ("cloud hosting", 200.0, 0L), ("electricity", 150.0, 25L),
-    ("software licence", 100.0, 0L))
   /** dollars in 8 decimals */
-  def usd(x: Double): BigInt = BigInt(math.round(x * 100)) * 1_000_000
+  def usd(x: Double): BigInt = Rules.units(x)
   /** the script's error, by its name (the trace "Name: words"), else the ledger's message, short */
   val errors = Vector("NotAgent", "Paused", "Expired", "ZeroAmount", "OverMax", "PayeeNotAllowed", "NotStarted",
     "BadTime", "AlreadyPaid", "PayeeCap", "PeriodCap", "TooSoon", "NeedsOwner", "InsufficientBalance",

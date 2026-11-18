@@ -26,15 +26,16 @@ object Life:
     "software licence", "attacker", "gym")
 
   /** `stopAfter = "created"`: the policy set up, no bill paid (the agent's demo plays its own) */
-  def apply(compiled: js.Dynamic, stopAfter: String = "")(using ExecutionContext): Future[World] =
+  def apply(compiled: js.Dynamic, stopAfter: String = "", rules: Rules = Rules.demo)(using ExecutionContext)
+      : Future[World] =
     for
       c <- Chain(compiled)
       parties <- inOrder(names)(c.party).map(ps => names.zip(ps).toMap)
-      w <- run(c, parties, compiled, stopAfter)
+      w <- run(c, parties, compiled, stopAfter, rules)
     yield w
 
-  private def run(c: Chain, p: Map[String, Party], compiled: js.Dynamic, stopAfter: String)(using ExecutionContext)
-      : Future[World] =
+  private def run(c: Chain, p: Map[String, Party], compiled: js.Dynamic, stopAfter: String, r: Rules)
+      (using ExecutionContext): Future[World] =
     val owner = p("owner"); val agent = p("agent")
     var steps = Vector.empty[LifeStep]
     var policy = ""
@@ -52,13 +53,12 @@ object Life:
       t <- c.deploy(owner, "TestUSD", "Test USD (8 decimals)", "tUSD8", 8)
       _ = token = t
       _ <- c.call(owner, token, "TestUSD", "mint", owner.address, usd(5_000))
-      // 1. the owner's policy: the agent's key; a 30-day period, at most 400 in it, at most 300 a payment, above 100
-      //    the owner approves, for a year; the payees with their caps and gaps; 1 000 deposited on it
-      pol <- c.deploy(owner, "SpendPolicy", token, agent.address, js.BigInt((30 * Day).toString), usd(400), usd(300),
-        usd(100), c.now + js.BigInt((365 * Day).toString))
+      // 1. the owner's policy from the rules (the demo's: a 30-day period, at most 400 in it, at most 300 a payment,
+      //    above 100 the owner approves, for a year; the payees with their caps and gaps); 1 000 deposited on it
+      pol <- c.deploy(owner, "SpendPolicy", token, agent.address, js.BigInt((r.periodDays * Day).toString),
+        usd(r.periodCap), usd(r.maxPayment), usd(r.approvalAbove), c.now + js.BigInt((r.days * Day).toString))
       _ = policy = pol
-      _ <- inOrder(Vector(("internet provider", 60.0, 25L), ("cloud hosting", 200.0, 0L),
-        ("electricity", 150.0, 25L), ("software licence", 100.0, 0L))) { (n, cap, gap) =>
+      _ <- inOrder(r.payees) { case PayeeRule(n, cap, gap) =>
         c.call(owner, policy, "SpendPolicy", "setPayee", p(n).address, true, usd(cap), js.BigInt((gap * Day).toString))
       }.flatMap(_ => c.call(owner, token, "TestUSD", "approve", policy, usd(1_000)))
         // the prepaid card topped up: 1 000 on the policy (§8.1)
