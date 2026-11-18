@@ -4,7 +4,7 @@ import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 
 /** node's files, for the command line and the tests (never the page) */
-object Node:
+object Files:
   @js.native @JSImport("node:fs", JSImport.Namespace) private object Fs extends js.Object
   private def fs = Fs.asInstanceOf[js.Dynamic]
   def read(path: String): String = fs.readFileSync(path, "utf8").asInstanceOf[String]

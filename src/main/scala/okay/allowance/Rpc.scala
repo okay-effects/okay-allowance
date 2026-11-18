@@ -11,7 +11,8 @@ import scala.scalajs.js.annotation.JSImport
  * agent's transactions, the receipt's events decoded; the contract's own errors read from viem's errors. The key is
  * the agent's, from a file outside the repository (the caller reads it).
  */
-final class Rpc(url: String, chainId: Int, policy: String, privateKey: String, abi: js.Dynamic)(using ExecutionContext):
+final class Rpc(url: String, chainId: Int, policy: String, privateKey: String, abi: js.Dynamic)(using ExecutionContext)
+    extends Node:
   private val v = Npm.viem
   private val account = ViemAccounts.asInstanceOf[js.Dynamic].privateKeyToAccount(privateKey)
   private val chain = js.Dynamic.literal(id = chainId, name = "testnet",

@@ -14,7 +14,7 @@ object Contracts:
   /** compiled from contracts/; errors stop it */
   def build(): String =
     val solc = Solc.asInstanceOf[js.Dynamic]
-    val sources = js.Dictionary(files.map(f => f -> js.Dynamic.literal(content = Node.read(s"contracts/$f")))*)
+    val sources = js.Dictionary(files.map(f => f -> js.Dynamic.literal(content = Files.read(s"contracts/$f")))*)
     val input = js.Dynamic.literal(language = "Solidity", sources = sources, settings = js.Dynamic.literal(
       optimizer = js.Dynamic.literal(enabled = true, runs = 200), evmVersion = "cancun",
       outputSelection = js.Dictionary("*" -> js.Dictionary("*" -> js.Array("abi", "evm.bytecode.object")))))
@@ -29,7 +29,7 @@ object Contracts:
       val c = fileOut.selectDynamic(name)
       contracts(name) = js.Dynamic.literal(abi = c.abi, bytecode = "0x" + c.evm.bytecode.`object`.toString)
     val version = solc.version().toString
-    Node.mkdirs("out")
-    Node.write("out/contracts.json", js.JSON.stringify(js.Dynamic.literal(compiler = version, contracts = contracts),
+    Files.mkdirs("out")
+    Files.write("out/contracts.json", js.JSON.stringify(js.Dynamic.literal(compiler = version, contracts = contracts),
       null, 1))
     s"compiled $version ${contracts.keys.mkString(", ")}"

@@ -13,7 +13,7 @@ class ContractSuite extends munit.FunSuite:
   override val munitTimeout = scala.concurrent.duration.Duration(5, "min")
 
   test("the life: each step for its own reason; a request moves no money; nothing to the attacker") {
-    Life(Node.compiled).map { w =>
+    Life(Files.compiled).map { w =>
       val want = Map("created" -> None, "internet" -> None, "cloud" -> None, "soon" -> Some("TooSoon"),
         "twice" -> Some("AlreadyPaid"), "injected" -> Some("PayeeNotAllowed"), "request" -> None, "approved" -> None,
         "payeecap" -> Some("PayeeCap"), "software" -> None, "periodcap" -> Some("PeriodCap"),
@@ -28,7 +28,7 @@ class ContractSuite extends munit.FunSuite:
 
   test("the attacks: strangers, the agent's own bounds, requests, the allowance as the total, expiry, a bad period") {
     for
-      w <- Life(Node.compiled, stopAfter = "created")
+      w <- Life(Files.compiled, stopAfter = "created")
       c = w.chain; p = w.parties; owner = p("owner"); agent = p("agent"); cloud = p("cloud hosting")
       deploy = (period: Long, expires: js.BigInt) => c.deploy(owner, "SpendPolicy", w.token, agent.address,
         js.BigInt(period.toString), usd(400), usd(300), usd(100), expires)
@@ -78,7 +78,7 @@ class ContractSuite extends munit.FunSuite:
     var seed = 11L
     def rnd(): Double = { seed = (seed * 1103515245 + 12345) % (1L << 31); seed.toDouble / (1L << 31) }
     for
-      w <- Life(Node.compiled, stopAfter = "created")
+      w <- Life(Files.compiled, stopAfter = "created")
       c = w.chain; p = w.parties; owner = p("owner"); agent = p("agent")
       pol <- c.deploy(owner, "SpendPolicy", w.token, agent.address, js.BigInt((30 * Day).toString), usd(300),
         usd(200), usd(1_000), c.now + js.BigInt((365 * Day).toString))
