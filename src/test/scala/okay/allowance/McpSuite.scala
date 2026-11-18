@@ -28,7 +28,7 @@ class McpSuite extends munit.FunSuite:
       _ <- s.handle(req("initialize"))
       list <- s.handle(req("tools/list"))
       _ = assertEquals(js.JSON.parse(list.head).result.tools.asInstanceOf[js.Array[js.Dynamic]].map(_.name.toString)
-        .toVector, Vector("check_payment", "pay", "status", "requests"))
+        .toVector, Vector("check_payment", "pay", "status", "requests", "address_book", "bills"))
       // a check: would be paid, and nothing written
       c <- s.handle(call("check_payment", """{"payee":"Internet provider","amount":"49.99","invoice":"INT-11"}"""))
       (cw, cs) = answer(c)
@@ -59,4 +59,37 @@ class McpSuite extends munit.FunSuite:
         && sw.contains("Gym: not allowed"), sw)
       bad <- s.handle(call("pay", """{"payee":"Gym"}"""))
     yield assert(js.JSON.parse(bad.head).result.isError.asInstanceOf[Boolean])
+  }
+
+  test("the address book and the bills to pay: windows from and to, each state, the contract's earliest date") {
+    for
+      d <- Agent.demo(Files.compiled, Vector.empty)
+      eth = d.worlds("ethereum").chain
+      s = McpServer(d.nodes, Agent.demoChains, d.book, bills = Files.bills, today = () => eth.now.toString.toLong)
+      _ <- s.handle(req("initialize"))
+      ab <- s.handle(call("address_book", "{}"))
+      (abw, _) = answer(ab)
+      _ = assert(abw.contains("Gym\n  ethereum") && abw.contains("not allowed on the policy"), abw)
+      _ = assert(abw.linesIterator.exists(l => l.startsWith("  cardano addr") &&
+        l.endsWith("allowed, 150 tUSD8 a period")),
+        abw)
+      states = (r: List[String]) =>
+        val b = answer(r)._2.bills.asInstanceOf[scala.scalajs.js.Array[scala.scalajs.js.Dynamic]].toVector
+        b.map(x => x.invoice.toString -> x.state.toString).toMap
+      b0 <- s.handle(call("bills", "{}"))
+      _ = assert(answer(b0)._1.startsWith("today 2026-01-01; 6 bill(s)"), answer(b0)._1)
+      _ = assertEquals(states(b0), Map("CLOUD-2025-12" -> "overdue", "INT-2026-01" -> "due", "POWER-2026-01" -> "due",
+        "POWER-2026-01-ADA" -> "due", "SW-2026-01" -> "upcoming", "INT-2026-02" -> "upcoming"))
+      _ <- s.handle(call("pay", """{"payee":"Internet provider","amount":"49.99","invoice":"INT-2026-01"}"""))
+      _ <- s.handle(call("pay", """{"payee":"Electricity","amount":"140","invoice":"POWER-2026-01"}"""))
+      _ = eth.advance(19 * 86_400) // 2026-01-20: the last day of one window, the first of another
+      b1 <- s.handle(call("bills", """{"state":"open"}"""))
+      (b1w, _) = answer(b1)
+      _ = assertEquals(states(b1), Map("CLOUD-2025-12" -> "overdue", "POWER-2026-01" -> "waiting",
+        "POWER-2026-01-ADA" -> "overdue", "SW-2026-01" -> "due", "INT-2026-02" -> "due"))
+      _ = assert(b1w.contains("2026-01-20 – 2026-01-31  due now: Internet provider, 49.99 tUSD8, " +
+        "invoice INT-2026-02, " +
+        "on ethereum (Internet, February) — the contract allows it from 2026-01-26"), b1w)
+      paid <- s.handle(call("bills", """{"state":"paid"}"""))
+    yield assertEquals(states(paid), Map("INT-2026-01" -> "paid"))
   }

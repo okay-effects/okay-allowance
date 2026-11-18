@@ -23,6 +23,8 @@ object Files:
 
   /** the compiled contracts, written by `contracts` */
   def compiled: js.Dynamic = js.JSON.parse(read(s"$home/out/contracts.json"))
+  /** the demo's bills to pay (§12) */
+  def bills: Vector[Bill] = Bill.parse(read(s"$home/demo/bills.json"))
   /** a folder of invoices (*.json), in name order */
   def invoices(dir: String): Vector[Invoice] =
     list(dir).filter(_.endsWith(".json")).map(f => Invoice.parse(read(s"$dir/$f")))

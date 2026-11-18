@@ -154,6 +154,7 @@ final class CardanoWorld(rules: Rules = Rules.demo):
         case _ => Vector.empty
       Outcome(false, Some(reason), args, 0, None, Vector.empty, "")
     private def amountOf(a: js.BigInt) = BigInt(a.toString)
+    def paid(invoice: String): Future[Boolean] = Future.successful(CardanoWorld.this.paid.get(inv(invoice)).isDefined)
     def status(payees: Seq[String]): Future[Status] = Future.successful {
       val st = state
       val w = (BigInt(now) - st.start) / st.period

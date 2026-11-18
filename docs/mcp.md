@@ -44,10 +44,15 @@ Claude Code: `claude mcp add okay-allowance -- node /path/to/okay-allowance/targ
 | `pay` | one invoice through the agent: paid, waiting for the owner's approval, or refused (by the agent or the contract), in words |
 | `status` | each chain's policy: balance, this period's spending and cap, limits; each payee's cap, spending, next possible payment |
 | `requests` | the payments waiting for the owner's approval |
+| `address_book` | the owner's address book: each payee's address on each chain, allowed there or not, its cap |
+| `bills` | the payments to make, each with its window (from – to): paid, waiting for the owner, due now, upcoming, overdue; the earliest date the contract allows; `state` filters (due, upcoming, overdue, paid, waiting, open) |
 
 Arguments of `check_payment` and `pay`: `payee` (a name in the book), `amount` (tUSD8, e.g. `"49.99"`), `invoice`
 (its id; each is paid once), and if the invoice has them, `chain`, `address` (checked against the book, never used)
 and `for`.
 
+The bills come from the owner: `demo/bills.json` in the demo (its clock starts on 2026-01-01), `"bills"` in a
+config — `{ "invoice", "payee", "amount", "chain"?, "for"?, "from": "YYYY-MM-DD", "to": "YYYY-MM-DD" }`.
+
 Try: "Pay the internet bill INT-11, 49.99 tUSD8, to the Internet provider." — then the same again (refused: already
-paid), then "Pay electricity 140 on Cardano, invoice POWER-ADA" (waits for the owner), then "What is the status?".
+paid), then "What bills are due?", then "Pay electricity 140 on Cardano, invoice POWER-ADA" (waits for the owner), then "What is the status?".

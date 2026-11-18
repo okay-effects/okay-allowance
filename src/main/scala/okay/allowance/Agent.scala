@@ -57,6 +57,8 @@ trait Node:
   def trial(to: String, amount: js.BigInt, invoice: String): Future[Outcome]
   def pay(to: String, amount: js.BigInt, invoice: String): Future[Outcome]
   def status(payees: Seq[String]): Future[Status]
+  /** the chain's own record: was this invoice (its 32-byte id) paid */
+  def paid(invoice: String): Future[Boolean]
 
 /** SpendPolicy.sol's standing from its views, by `read(function, args)` — the chain in memory's or an RPC node's */
 object EvmStatus:
@@ -84,6 +86,8 @@ final class MemoryNode(c: Chain, policy: String, agent: Party)(using ExecutionCo
   def pay(to: String, amount: js.BigInt, invoice: String) =
     c.call(agent, policy, "SpendPolicy", "pay", to, amount, invoice)
   def status(payees: Seq[String]) = EvmStatus((fn, args) => c.view(policy, "SpendPolicy", fn, args*), payees)
+  def paid(invoice: String) =
+    c.view(policy, "SpendPolicy", "paidInvoice", invoice).map(_.asInstanceOf[Boolean])
 
 object Ledger:
   def trial[R[_]](chain: String, to: String, amount: js.BigInt, invoice: String)(using In[Ledger, R]): Outcome ! R =

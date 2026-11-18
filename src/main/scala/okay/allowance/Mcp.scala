@@ -14,8 +14,8 @@ import okay.mcp.{Rpc, ToolCall, ToolResult, ToolSpec, Content, Servers}
  * never a key, never an address that is not the book's. Every call through the agent's judgement, then the contract.
  * On okay-mcp: `dispatch` on the machine with okay-simple's async module, one message a run, to a Future.
  */
-final class McpServer(nodes: Map[String, Node], chains: Seq[String], book: Book, journal: Entry => Unit = _ => ())
-    (using ExecutionContext):
+final class McpServer(nodes: Map[String, Node], chains: Seq[String], book: Book, journal: Entry => Unit = _ => (),
+    bills: Seq[Bill] = Nil, today: () => Long = () => (js.Date.now() / 1000).toLong)(using ExecutionContext):
   val servers: Servers[Machine.type] = new Servers[Machine.type]()(using Machine)
   import servers.{Server, Tools}
   import servers.fx.{!, pure}
@@ -56,7 +56,92 @@ final class McpServer(nodes: Map[String, Node], chains: Seq[String], book: Book,
     ToolSpec("status", "Each chain's policy: balance, this period's spending and cap, the most a payment, the " +
       "approval threshold, and each payee's cap, spending and next possible payment.",
       Json.obj("type" -> str("object"), "properties" -> Json.obj("chain" -> Json.obj("type" -> str("string"))))),
-    ToolSpec("requests", "Payments waiting for the owner's approval.", Json.obj("type" -> str("object"))))
+    ToolSpec("requests", "Payments waiting for the owner's approval.", Json.obj("type" -> str("object"))),
+    ToolSpec("address_book", "The owner's address book: each payee's address on each chain, and whether that " +
+      "chain's policy allows it (its cap a period).", Json.obj("type" -> str("object"))),
+    ToolSpec("bills", "The payments to make: the owner's bills with their payment windows (from and to), each " +
+      "paid, waiting for the owner, due now, upcoming or overdue, and the earliest date the contract allows. " +
+      "Pay a due bill with `pay` (its payee, amount and invoice).", Json.obj("type" -> str("object"),
+      "properties" -> Json.obj("state" -> Json.obj("type" -> str("string"), "description" ->
+        str("only bills in this state: due, upcoming, overdue, paid, waiting, open (not paid)"))))))
+
+  /** each chain's standing for the book's payees there: chain → (name, address, its standing) */
+  private def standing: Future[Map[String, Vector[(String, String, PayeeStatus)]]] =
+    Life.inOrder(chains.filter(nodes.contains)) { chain =>
+      val payees = book.payees.toVector.sortBy(_._1).flatMap((name, m) => m.get(chain).map(name -> _))
+      nodes(chain).status(payees.map(_._2)).map(s =>
+        chain -> payees.zip(s.payees).map { case ((n, a), p) => (n, a, p) })
+    }.map(_.toMap)
+
+  private def addressBook: Future[ToolResult] = standing.map { st =>
+    val rows = book.payees.toVector.sortBy(_._1).map { (name, m) =>
+      name -> chains.flatMap(c => m.get(c).map(a => (c, a, st.get(c).flatMap(_.find(_._1 == name)).map(_._3))))
+    }
+    val words = rows.map { (name, at) =>
+      (name +: at.map { (c, a, p) =>
+        s"  $c $a — " + p.fold("no node for this chain")(p =>
+          if p.allowed then s"allowed, ${big(p.cap)} a period" else "not allowed on the policy")
+      }).mkString("\n")
+    }.mkString("\n")
+    val json = Json.obj("payees" -> Json.Arr(rows.map { (name, at) =>
+      Json.obj("name" -> str(name), "addresses" -> Json.Arr(at.toVector.map { (c, a, p) =>
+        Json.obj("chain" -> str(c), "address" -> str(a), "allowed" -> Json.Bool(p.exists(_.allowed)),
+          "cap" -> str(p.filter(_.allowed).fold("")(x => big(x.cap))))
+      }))
+    }))
+    ToolResult(List(Content.Text(if words.isEmpty then "the address book is empty" else words)), Some(json))
+  }
+
+  /** each bill's state today, on the chain the agent would pay it on */
+  private def billStates: Future[Vector[BillState]] =
+    val now = today()
+    Life.inOrder(bills.sortBy(b => (b.opens, b.invoice))) { b =>
+      Agent.decide(b.toInvoice, book, chains) match
+        case Decision.Refuse(reason, _) =>
+          Future.successful(BillState(b, s"cannot be paid: ${Agent.explain(reason)}", b.chain.getOrElse(""), 0))
+        case Decision.Pay(_, chain, address, _) => nodes.get(chain) match
+          case None => Future.successful(BillState(b, "cannot be paid: no node for its chain", chain, 0))
+          case Some(n) =>
+            for paid <- n.paid(Agent.invoiceId(b.invoice)); s <- n.status(Seq(address)) yield
+              val next = s.payees.headOption.fold(0L)(_.nextAt)
+              val state =
+                if paid then "paid"
+                else if waiting.exists(_.invoice == b.invoice) then "waiting"
+                else if now < b.opens then "upcoming"
+                else if now > b.closes then "overdue"
+                else "due"
+              BillState(b, state, chain, if !paid && next > math.max(b.opens, now) then next else 0)
+    }
+
+  private def billsList(only: Option[String]): Future[ToolResult] = billStates.map { all =>
+    val shown = only.map(_.toLowerCase) match
+      case Some("open") => all.filter(s => s.state != "paid")
+      case Some(st) => all.filter(_.state.startsWith(st))
+      case None => all
+    val words = shown.map { s =>
+      val b = s.bill
+      val label = s.state match
+        case "due" => "due now"
+        case "waiting" => "waiting for the owner"
+        case other => other
+      val limit = if s.earliest == 0 then ""
+        else if s.earliest > b.closes then
+          s" — the contract allows it only from ${Bill.day(s.earliest)}, after the window"
+        else s" — the contract allows it from ${Bill.day(s.earliest)}"
+      s"${b.from} – ${b.to}  $label: ${b.payee}, ${b.amount} tUSD8, invoice ${b.invoice}" +
+        (if s.chain.isEmpty then "" else s", on ${s.chain}") + (if b.about.isEmpty then "" else s" (${b.about})") +
+        limit
+    }
+    val json = Json.obj("today" -> str(Bill.day(today())), "bills" -> Json.Arr(shown.map { s =>
+      val b = s.bill
+      Json.obj("invoice" -> str(b.invoice), "payee" -> str(b.payee), "amount" -> str(b.amount),
+        "chain" -> str(s.chain), "for" -> str(b.about), "from" -> str(b.from), "to" -> str(b.to),
+        "state" -> str(s.state), "earliest" -> str(if s.earliest == 0 then "" else Bill.day(s.earliest)))
+    }))
+    val head = s"today ${Bill.day(today())}; " + (if shown.isEmpty then "no bills" + only.fold("")(o => s" ($o)")
+      else s"${shown.size} bill(s)")
+    ToolResult(List(Content.Text((head +: words).mkString("\n"))), Some(json))
+  }
 
   private def check(inv: Invoice): Future[ToolResult] = Agent.decide(inv, book, chains) match
     case Decision.Refuse(reason, detail) =>
@@ -111,9 +196,16 @@ final class McpServer(nodes: Map[String, Node], chains: Seq[String], book: Book,
       case "check_payment" => invoice(c).fold(e => Future.successful(ToolResult.error(e)), check)
       case "pay" => invoice(c).fold(e => Future.successful(ToolResult.error(e)), pay)
       case "status" => status(text(c.arguments, "chain"))
-      case "requests" => Future.successful(ToolResult.text(
-        if waiting.isEmpty then "no payment is waiting for the owner"
-        else waiting.map(e => s"${e.chain} request ${e.request}: ${e.invoice} — ${e.words}").mkString("\n")))
+      case "requests" =>
+        // those the owner approved since are paid on their chain: no longer waiting
+        Life.inOrder(waiting)(e => nodes.get(e.chain).fold(Future.successful(false))(_.paid(
+          Agent.invoiceId(e.invoice))).map(e -> _)).map { checked =>
+          waiting = checked.collect { case (e, false) => e }
+          ToolResult.text(if waiting.isEmpty then "no payment is waiting for the owner"
+            else waiting.map(e => s"${e.chain} request ${e.request}: ${e.invoice} — ${e.words}").mkString("\n"))
+        }
+      case "address_book" => addressBook
+      case "bills" => billsList(text(c.arguments, "state"))
       case other => Future.successful(ToolResult.error(s"no such tool: $other")))
 
   val server: Server[Async] = Server[Async]("okay-allowance", "0.1.0", tools, instructions = Some(

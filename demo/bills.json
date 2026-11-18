@@ -1,0 +1,14 @@
+[
+  { "invoice": "CLOUD-2025-12", "payee": "Cloud hosting", "amount": "85", "for": "2 servers, December",
+    "from": "2025-12-20", "to": "2025-12-31" },
+  { "invoice": "INT-2026-01", "payee": "Internet provider", "amount": "49.99", "for": "Internet, January",
+    "from": "2026-01-01", "to": "2026-01-10" },
+  { "invoice": "POWER-2026-01", "payee": "Electricity", "amount": "140", "for": "Electricity, December",
+    "from": "2026-01-01", "to": "2026-01-15" },
+  { "invoice": "POWER-2026-01-ADA", "payee": "Electricity", "amount": "60", "chain": "cardano",
+    "for": "Electricity, the summer house", "from": "2026-01-01", "to": "2026-01-10" },
+  { "invoice": "SW-2026-01", "payee": "Software licence", "amount": "90", "for": "Licences, Q1",
+    "from": "2026-01-05", "to": "2026-01-20" },
+  { "invoice": "INT-2026-02", "payee": "Internet provider", "amount": "49.99", "for": "Internet, February",
+    "from": "2026-01-20", "to": "2026-01-31" }
+]

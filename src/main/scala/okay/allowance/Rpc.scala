@@ -41,6 +41,10 @@ final class Rpc(url: String, chainId: Int, policy: String, privateKey: String, a
     public.readContract(js.Dynamic.literal(address = policy, abi = abi, functionName = fn,
       args = js.Array(args*))).asInstanceOf[js.Promise[js.Dynamic]].toFuture, payees)
 
+  def paid(invoice: String): Future[Boolean] =
+    public.readContract(js.Dynamic.literal(address = policy, abi = abi, functionName = "paidInvoice",
+      args = js.Array[js.Any](invoice))).asInstanceOf[js.Promise[Boolean]].toFuture
+
   def trial(to: String, amount: js.BigInt, invoice: String): Future[Outcome] =
     public.simulateContract(request(to, amount, invoice)).asInstanceOf[js.Promise[js.Any]].toFuture
       .map(_ => Outcome(true, None, Vector.empty, 0, None, Vector.empty, ""))
