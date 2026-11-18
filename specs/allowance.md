@@ -165,3 +165,21 @@ model, in SpendPolicy.sol's order of checks; the Cardano validator checks in the
 two rules is refused for the same one on both. RulesSuite: 120 random payments on the EVM contract, on the Cardano
 script and through the model — the three agree on every decision and reason. Its first run found the two-window
 invoice memory on Cardano letting old invoices be paid again; §9 now keeps them forever in an MPF root.
+
+## 12. The address book and the bills to pay, over MCP (2026-11-18, the owner)
+
+Two more MCP tools:
+- `address_book` — each payee of the owner's book: its address on each chain, and whether that chain's policy
+  allows it (with its cap a period).
+- `bills` {state?} — THE PAYMENTS TO MAKE: the owner's list of bills, each with its payee, amount, invoice, chain
+  (optional), what it is for and its payment window — from and to (dates). Each shown with its state: paid (the
+  chain's own record: EVM `paidInvoice`, Cardano the invoices' trie), waiting for the owner, due now (today within
+  the window), upcoming (before it), overdue (after it, unpaid); and, when the policy's gap for the payee ends later
+  than the window opens, the earliest date the contract allows. `state` filters ("due", "upcoming", "overdue",
+  "paid", "waiting", "open" = not paid). Sorted by the window's start.
+
+The bills come from the owner: `demo/bills.json` for `mcp demo`, `"bills": [...]` in a config. A bill:
+`{ "invoice", "payee", "amount", "chain"?, "for"?, "from": "YYYY-MM-DD", "to": "YYYY-MM-DD" }`. Today: the
+chain's clock in the demo (2026-01-01 on), the computer's on real nodes. Each node gains `paid(invoice)`.
+The window is shown, not enforced: `pay` of a bill outside it is judged as any invoice (BACKLOG: the agent refusing
+outside the window).

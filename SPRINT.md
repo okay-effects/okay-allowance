@@ -30,6 +30,9 @@
   generated PolicyCode.scala (as okay-invest scripts/vault-report.scala vaultCode, but scala-cli in this repo);
   (3) off-chain in the Scala.js build: types, TxBuilder create/deposit/pay/close, a CardanoNode on the Emulator
   (template: okay-invest cardano/Vault.scala, VaultSim.scala); (4) the demo with a third chain "cardano".
+- [~] **mcp-bills** — (§12) MCP tools `address_book` and `bills` (payment windows from–to, state paid/waiting/
+  due/upcoming/overdue, earliest by the contract); Bill + demo/bills.json + config "bills"; Node.paid(invoice);
+  McpServer(bills, today); McpSuite; docs/mcp.md.
 - [ ] **solana** — later, only for a reason: Rust/Anchor, an SPL delegate as the allowance.
 - [ ] **page** — the owner's view in the browser's EVM, then through a wallet on a testnet (§4.4).
 - [ ] **testnet** — deploy on the hackathon's chain (Aevum, QDay) from its public docs; never run its starter kit
