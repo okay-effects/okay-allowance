@@ -11,8 +11,11 @@
   drops the agent; the owner's wallet is never touched by a payment (tested). 9/9 suites. Cardano follows the same.
 - [ ] **mcp** — the policy's door as an MCP server (§8.3): check_payment, pay, status, requests; Scala on okay-mcp.
 - [ ] **rules** — one Scala model of the owner's rules (§6), each chain's policy set up from it.
-- [ ] **cardano** — the policy as a Scalus validator (Scala): budget at the script, the datum's spending, invoices once
-  (compact), the owner's signature above the threshold; its life and attacks on Scalus's emulator; a Ledger handler.
+- [~] **cardano** — the policy as a Scalus validator (§9): (1) cardano/contracts — SpendPolicy validator + ScalusTest
+  spec of every refusal (template: ~/work/my/okay-invest/contracts StrategyVault + VaultSpec); (2) plutus.json →
+  generated PolicyCode.scala (as okay-invest scripts/vault-report.scala vaultCode, but scala-cli in this repo);
+  (3) off-chain in the Scala.js build: types, TxBuilder create/deposit/pay/close, a CardanoNode on the Emulator
+  (template: okay-invest cardano/Vault.scala, VaultSim.scala); (4) the demo with a third chain "cardano".
 - [ ] **solana** — later, only for a reason: Rust/Anchor, an SPL delegate as the allowance.
 - [ ] **page** — the owner's view in the browser's EVM, then through a wallet on a testnet (§4.4).
 - [ ] **testnet** — deploy on the hackathon's chain (Aevum, QDay) from its public docs; never run its starter kit

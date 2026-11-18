@@ -106,3 +106,29 @@ owner's rules pays on each, each chain's own contract keeping them there.
    `status` (the balance, the period's spending, the payees and their caps), `requests` — so any AI agent (Claude
    Desktop, Claude Code, Cursor …) pays through it; the agent's key lives in the server, never with the model, and
    the contract bounds every call. In Scala, on okay-mcp; okay-guard's policy may sit in front of it.
+
+## 9. On Cardano (2026-11-18)
+
+No allowances on Cardano: the budget is a UTxO at the policy's script address, carrying the policy's NFT (minted
+once, from a seed, as okay-invest's vault) and the state as its inline datum. Scalus 1.4.0, a build of its own in
+`cardano/contracts/` (Scala 3.9, the compiler plugin); the off-chain side in the Scala.js build on
+scalus-cardano-ledger (the ledger emulator runs in node and in a page), the same types field by field.
+
+The datum: owner, agent (key hashes), the token (an asset class), period (ms), start, periodCap, maxPayment,
+approvalAbove, expires, paused; this window's index and spending; the payees — credential, cap, gap, this window's
+spending, the last payment's time; the invoices paid in this window and the one before (32-byte ids).
+
+Three ways to spend it:
+- PAY (the agent signs): the payee's credential, the amount, the invoice. The same checks as SpendPolicy.sol with
+  the same names as errors (NotAgent, Paused, Expired, PayeeNotAllowed, ZeroAmount, OverMax, PayeeCap, PeriodCap,
+  TooSoon, AlreadyPaid, InsufficientBalance) — the agent's words for them work on both. Time from the validity
+  interval (at most an hour; its start is "now", its end before `expires`). Above approvalAbove the owner signs too
+  (`NeedsOwner`) — on Cardano a request is a transaction waiting for the owner's signature, not a record. The one
+  output back carries exactly the next state (compared as data) and the balance less the amount; the payee's outputs
+  get at least the amount.
+- DEPOSIT (anyone): the same state, more of the token, no less ada.
+- OWNER (the owner signs): anything — the rules, withdraw, pause; closing burns the NFT.
+
+Invoices once, compactly: kept for this window and the one before, then forgotten. The agent's own journal refuses
+an older one; on-chain an invoice older than two periods could be paid again — bounded by the payee's cap and gap.
+(SpendPolicy.sol keeps every id forever: storage on EVM is a map, on Cardano a datum that every payment rewrites.)
