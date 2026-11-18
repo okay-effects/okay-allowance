@@ -59,3 +59,34 @@ checked), Life.scala, Agent.scala (effects Ledger and Journal; handlers memory a
 same transaction hashes, and passes the same checks (7 munit suites' tests: the life, 18 attacks, 80 random payments,
 the agent's 10 invoices, its judgement, a trial writing nothing, the words). Transactions are run one after another
 (`Life.inOrder`): a sender's nonce forbids side by side.
+
+## 6. One agent, several chains (2026-11-18)
+
+The owner: "this must not depend on a blockchain; one agent can work with several at once". The idea is chain-free:
+the owner's rules are kept by the chain the money is on, not by the agent. So:
+- THE ADDRESS BOOK names each payee's address ON EACH CHAIN it accepts (`Payee(name, Map(chain → address))`);
+  the owner has a policy on each chain the money is on.
+- THE LEDGER EFFECT carries its chain: `Trial(chain, to, amount, invoice)`, `Pay(chain, …)`; a handler answers for
+  each chain (the chain in memory, a node over RPC, a Cardano emulator, …) and `Ledger.chains(handlers)` routes by it.
+- THE AGENT chooses the chain per invoice: the invoice's chain if it names one (and the payee accepts it there),
+  else the first of the owner's chains where the payee has an address; the trial decides — a refusal on one chain
+  (the payee's cap there, say) is not retried on another (the caps are per chain on purpose: the owner sized them).
+- ONE MODEL OF THE RULES in Scala (`Rules`: payees with caps and gaps, the period, its cap, the most a payment, the
+  approval threshold, the expiry) from which each chain's policy is set up; the page shows it once.
+- THE CONTRACTS, per chain: EVM — SpendPolicy.sol (the money stays in the owner's wallet, an ERC-20 allowance);
+  CARDANO — a Scalus validator (Scala; the money a budget at the script's address — Cardano has no allowance over
+  someone's wallet; the period's spending and each payee's in the datum; an invoice paid once kept compact; above
+  the threshold the owner's signature); SOLANA — later, Rust/Anchor (an SPL token's delegate is the allowance), only
+  for a reason (a client, a job).
+The hackathon's submission is the EVM one (its chain is EVM); the others extend it.
+
+## 7. What it is for
+
+AI agents begin to act — book, buy, pay subscriptions and bills. To be useful an agent must reach money; today the
+choices are bad: its own key or card (a bug, an injected invoice or a stolen key spends everything) or every payment
+approved by hand (then the agent is useless). okay-allowance is the agent's allowance with rules the chain enforces,
+not the agent: whom, how much at once, a month, per payee, how often, an invoice once, the large ones by the owner,
+every step in a public log. Whatever the agent does — mistaken, deceived, broken into — it cannot leave those bounds;
+the owner pauses or revokes at once. Who needs it: people letting an agent pay their bills; companies whose agents
+buy cloud, APIs, data; services where agents pay each other. Money lives on several chains, so one agent with one
+owner's rules pays on each, each chain's own contract keeping them there.
