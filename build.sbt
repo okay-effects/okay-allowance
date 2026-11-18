@@ -13,6 +13,7 @@ ThisBuild / resolvers ++= Seq("okay-scala" at "https://okay-effects.github.io/ok
 lazy val root = (project in file(".")).enablePlugins(ScalaJSPlugin)
   .settings(name := "okay-allowance",
     libraryDependencies ++= Seq("io.github.okay-effects" %%% "okay-scala" % "0.1.1",
+      "org.scalus" %%% "scalus-cardano-ledger" % "1.4.0",
       "org.scalameta" %%% "munit" % "1.2.3" % Test),
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.ESModule).withESFeatures(_.withESVersion(ESVersion.ES2020))),
     scalaJSUseMainModuleInitializer := true,

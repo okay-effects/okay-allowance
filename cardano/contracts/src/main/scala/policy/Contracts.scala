@@ -8,7 +8,9 @@ import scalus.uplc.builtin.Data
 
 /** the policy compiled, and its CIP-57 blueprint (`sbt blueprint`; pinned at ./plutus.json by `sbt blueprintPin`) */
 object SpendPolicyContract extends Contract {
-    private given Options = Options.release
+    // release, but the refusals keep their names: a transaction refused on-chain says which rule, as the EVM
+    // contract's errors do (specs/allowance.md §9)
+    private given Options = Options.release.copy(generateErrorTraces = true, removeTraces = false)
     lazy val compiled = PlutusV3.compile(SpendPolicy.validate)
     lazy val blueprint = Blueprint.plutusV3[TxOutRef, PolicyState, PolicyAction](
       title = "Spend policy",

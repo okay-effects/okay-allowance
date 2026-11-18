@@ -1,0 +1,20 @@
+{
+  "name": "scala-cli",
+  "argv": [
+    "/opt/homebrew/bin/scala-cli",
+    "bsp",
+    "--json-options",
+    "/Users/sergiy/work/my/okay-allowance/scripts/.scala-build/ide-options-v2.json",
+    "--json-launcher-options",
+    "/Users/sergiy/work/my/okay-allowance/scripts/.scala-build/ide-launcher-options.json",
+    "--envs-file",
+    "/Users/sergiy/work/my/okay-allowance/scripts/.scala-build/ide-envs.json",
+    "/Users/sergiy/work/my/okay-allowance/scripts/policy-code.scala"
+  ],
+  "version": "1.17.1",
+  "bspVersion": "2.1.1",
+  "languages": [
+    "scala",
+    "java"
+  ]
+}
