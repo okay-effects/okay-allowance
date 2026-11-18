@@ -1,0 +1,1 @@
+- **cardano-node** — the Cardano policy on a real network (preprod): a Node over Blockfrost or Koios (okay-cardano's Chain), the script as a reference script, the agent's key from a file outside git. Only when a Cardano testnet demo is wanted (the hackathon is EVM).
