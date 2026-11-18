@@ -1,6 +1,5 @@
 package okay.allowance
 
-import scala.concurrent.Future
 import scala.scalajs.js
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
 
