@@ -61,7 +61,8 @@ object Ledger:
     perform[Ledger](Pay(chain, to, amount, invoice))
 
   /** EACH CHAIN ITS NODE: the requests routed by their chain (memory, RPC, …); a chain with no node is refused */
-  def on[R[_], Rest[_], A](nodes: Map[String, Node])(p: A ! R)(using Split[Ledger, R, Rest], In[Async, Rest]): A ! Rest =
+  def on[R[_], Rest[_], A](nodes: Map[String, Node])(p: A ! R)
+      (using Split[Ledger, R, Rest], In[Async, Rest]): A ! Rest =
     def none(chain: String) = Future.successful(Outcome(false, Some("NoSuchChain"), Vector(chain), 0, None,
       Vector.empty, ""))
     handle(p, Handler.general[Ledger, Rest, A, A](pure)([X] => (op: Ledger[X], k: X => A ! Rest) => op match
