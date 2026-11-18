@@ -5,6 +5,9 @@
 - [x] **scala** — DONE 2026-11-18 (§5): all but the contract in Scala 3 / Scala.js on okay-scala effects; same results as the JS reference (removed).
 - [x] **multichain** — DONE 2026-11-18: Book (payee → chain → address), Ledger(chain, …), `Ledger.on(nodes)` routing by chain (Node: MemoryNode, Rpc; a missing node refused as NoSuchChain), the chain chosen per invoice; the demo on two EVM chains in memory at once (12 invoices), each chain's books its own; CLI `run CONFIG DIR` with several chains. Was: one agent, several chains (§6): the address book by chain, Ledger(chain, …), handlers routed
   by chain, the chain chosen per invoice; tests with two chains in memory at once.
+- [~] **prepaid** — the money on the contract on every chain (§8.1): SpendPolicy.sol holds the token, deposit,
+  withdraw, close; the tests and the demo from it.
+- [ ] **mcp** — the policy's door as an MCP server (§8.3): check_payment, pay, status, requests; Scala on okay-mcp.
 - [ ] **rules** — one Scala model of the owner's rules (§6), each chain's policy set up from it.
 - [ ] **cardano** — the policy as a Scalus validator (Scala): budget at the script, the datum's spending, invoices once
   (compact), the owner's signature above the threshold; its life and attacks on Scalus's emulator; a Ledger handler.

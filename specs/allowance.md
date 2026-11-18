@@ -90,3 +90,19 @@ every step in a public log. Whatever the agent does — mistaken, deceived, brok
 the owner pauses or revokes at once. Who needs it: people letting an agent pay their bills; companies whose agents
 buy cloud, APIs, data; services where agents pay each other. Money lives on several chains, so one agent with one
 owner's rules pays on each, each chain's own contract keeping them there.
+
+## 8. Decisions of 2026-11-18 (the owner)
+
+1. THE MONEY ON THE CONTRACT, on every chain — a prepaid card: the owner tops the policy up from time to time; the
+   agent pays only from what is there; the owner withdraws what is left or closes at any time. Clearer and safer
+   than an allowance over the owner's wallet: the most that can ever be lost is the balance, visible at a glance;
+   and it is the same on every chain (Cardano has no allowances: a budget at the script's address is its only way).
+   SpendPolicy.sol changes: it holds the token; `deposit` (anyone may top it up), `withdraw` and `close` (the owner),
+   `pay` transfers from its own balance. Every rule as before.
+2. THE AGENT'S MODEL: the agent is a deterministic program; a language model, if any, only reads free-text invoices
+   into the invoice's fields — any model (Claude, a local one through okay-llm). It is not trusted: the contract
+   bounds whatever it decides.
+3. AN MCP SERVER as the other way in: the policy's door offered as MCP tools — `check_payment` (a trial), `pay`,
+   `status` (the balance, the period's spending, the payees and their caps), `requests` — so any AI agent (Claude
+   Desktop, Claude Code, Cursor …) pays through it; the agent's key lives in the server, never with the model, and
+   the contract bounds every call. In Scala, on okay-mcp; okay-guard's policy may sit in front of it.
