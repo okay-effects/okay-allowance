@@ -81,3 +81,39 @@ pageTest := {
   if (scala.sys.process.Process(Seq("node", "page/browser/suite.mjs", out.getPath), base,
     shell.toVector.map("PW_CHROMIUM" -> _): _*).! != 0) sys.error("pageTest: a scenario failed in the browser")
 }
+
+/** PUBLISHING THE PAGE: `sbt publishSite` — the page built by `web` from a CLEAN tree, pushed to this repository's
+ * gh-pages branch (the built files only), served at https://okay-effects.github.io/okay-allowance/ */
+val publishSite = taskKey[Unit]("build the owner's page and push it to the gh-pages branch")
+publishSite := Def.taskDyn {
+  import scala.sys.process._
+  val base = (ThisBuild / baseDirectory).value
+  val dirty = Process(Seq("git", "status", "--porcelain"), base).!!.trim
+  if (dirty.nonEmpty)
+    sys.error(s"publishSite: the working tree has changes not committed — commit or stash them first:\n$dirty")
+  Def.task {
+    val log = streams.value.log
+    val out = web.value
+    val sha = Process(Seq("git", "rev-parse", "--short", "HEAD"), base).!!.trim
+    val remote = Process(Seq("git", "remote", "get-url", "origin"), base).!!.trim
+    val repo = target.value / "gh-pages"
+    def git(args: String*): Unit =
+      if (Process("git" +: args, repo).! != 0) sys.error(s"publishSite: git ${args.mkString(" ")} failed")
+    IO.delete(repo)
+    if (Process(Seq("git", "clone", "--quiet", "--branch", "gh-pages", "--depth", "1", remote, repo.getPath)).! != 0) {
+      // the first publication: an empty branch of its own
+      IO.createDirectory(repo)
+      git("init", "--quiet", "-b", "gh-pages"); git("remote", "add", "origin", remote)
+    }
+    IO.listFiles(repo).filterNot(_.getName == ".git").foreach(IO.delete)
+    IO.copyDirectory(out, repo)
+    IO.write(repo / ".nojekyll", "")
+    git("add", "-A")
+    if (Process(Seq("git", "diff", "--cached", "--quiet"), repo).! == 0) log.info("publishSite: nothing changed")
+    else {
+      git("commit", "--quiet", "-m", s"The owner's page at $sha")
+      git("push", "--quiet", "origin", "gh-pages")
+      log.info(s"publishSite: the page at $sha pushed to gh-pages")
+    }
+  }
+}.value
