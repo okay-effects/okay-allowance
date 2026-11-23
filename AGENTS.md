@@ -9,6 +9,8 @@ owner's approval, every decision logged on chain. Read specs/allowance.md first;
   @ethereumjs/vm, the contracts' build over solc-js, the tests (munit, in node). npm holds only the libraries.
 - `sbt test`; `sbt fastLinkJS` then `node target/scala-3.3.8/okay-allowance-fastopt/main.js contracts|demo|run|intake|
   pay-due|mcp …` (docs/mcp.md: the plan and its two MCP doors).
+- Modules (§14): `core` (shared by node and the page: chains, agent, rules, plan, Cardano off-chain — no node
+  imports), the root (node: Files, Main, Mcp, Contracts, FilePlan; the tests), `page` (the owner's page).
 - Cardano (specs/allowance.md §9): the validator in `cardano/contracts` (its own sbt build, Scala 3.9, Scalus):
   `sbt test blueprintPin` there, then `scala-cli run scripts/policy-code.scala` here regenerates PolicyCode.scala.
   `@noble/curves` stays 1.x at the top of node_modules (Scalus imports its 1.x paths; the EVM libraries nest 2.x).

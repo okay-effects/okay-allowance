@@ -116,8 +116,8 @@ object Plan:
     val last = new js.Date(js.Date.UTC(ny, nm, 0)).getUTCDate().toInt
     f"$ny%04d-$nm%02d-${math.min(d, last)}%02d"
 
-/** where the plan lives: memory (the demo, the tests), a JSON file (real nodes; the agent's and the owner's servers
- * share it) */
+/** where the plan lives: memory (the demo, the tests, the page), a JSON file (real nodes: FilePlan, beside the
+ * command line) */
 trait PlanStore:
   def load: Plan
   def save(p: Plan): Unit
@@ -125,7 +125,3 @@ trait PlanStore:
 final class MemoryPlan(var plan: Plan = Plan.empty) extends PlanStore:
   def load: Plan = plan
   def save(p: Plan): Unit = plan = p
-
-final class FilePlan(path: String, seed: => Plan) extends PlanStore:
-  def load: Plan = if Files.exists(path) then Plan.parse(Files.read(path)) else seed
-  def save(p: Plan): Unit = Files.write(path, p.json)
