@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The owner's page — okay-allowance</title>
+  <meta name="description" content="An AI agent pays bills in a stablecoin by a plan you approve; a contract on each chain bounds every payment. The demo: Ethereum, Base and Cardano in your browser.">
+  <style>
+    body { margin: 0; }
+    header.top { display: flex; align-items: baseline; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #e3e7ee;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    header.top .name { font-weight: 600; }
+    header.top .what { opacity: .8; }
+    header.top .code { margin-left: auto; color: inherit; opacity: .85; }
+    #app > p.starting { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; padding: 24px 16px; }
+    /* the foot: who built it on the left, "Need more?" (the author) on the right */
+    body > footer { border-top: 1px solid #e3e7ee; padding: 10px 16px; font-size: 14px;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body > footer .bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+    body > footer .more { margin-left: auto; }
+    /* a row's own buttons in one line beside it */
+    #app td .okay-mark-slot .okay-group { display: flex; flex-wrap: nowrap; gap: 6px; }
+    /* a phone: each row of a table a card, its cells one under another (each cell says what it is), the checkbox
+       and the payment on one line, the row's buttons under them */
+    @media (max-width: 640px) {
+      #app table, #app thead, #app tbody, #app tr, #app td { display: block; width: auto; }
+      #app thead { display: none; }
+      #app tr { padding: 10px 12px; border-bottom: 1px solid #e3e7ee; }
+      #app td { padding: 2px 0; border: 0; }
+      #app td:first-child, #app td:nth-child(2) { display: inline-block; margin-right: 6px; font-weight: 600; }
+      #app td:has(> p.okay-text:empty) { display: none; }
+    }
+  </style>
+  <!-- Cloudflare Web Analytics: no cookies, no personal data -->
+  <script type='module' src='https://static.cloudflareinsights.com/beacon.min.js'
+    data-cf-beacon='{"token": "bf3bb7f255b64c1da1185fd68bdf6a44", "spa": true}'></script>
+</head>
+<body>
+  <header class="top">
+    <span class="name">okay-allowance</span>
+    <span class="what">an AI agent pays bills, its hands tied by a contract — the owner's page (a demo)</span>
+    <a class="code" href="https://github.com/okay-effects/okay-allowance" target="_blank" rel="noopener noreferrer">The code</a>
+  </header>
+  <main id="app"><p class="starting">Setting up three chains in your browser — Ethereum, Base and Cardano, a policy with
+    1 000 tUSD8 on each… (no network, no wallet, no money)</p></main>
+  <footer><div class="bar">
+    <span>Built on <a href="https://github.com/okay-effects" target="_blank" rel="noopener noreferrer">okay-effects</a>
+      — algebraic effects for Scala</span>
+    <a class="more" href="https://okay-effects.github.io/#author" target="_blank" rel="noopener noreferrer">Need
+      more?</a>
+  </div></footer>
+  <script type="module" src="main-ENSTG7B5.js"></script>
+</body>
+</html>
