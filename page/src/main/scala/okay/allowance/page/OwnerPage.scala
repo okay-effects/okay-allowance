@@ -38,21 +38,21 @@ object OwnerPage:
 
   def planScreen(rows: Vector[Row], views: Vector[okay.allowance.ChainView], today: Long, said: Option[String])
       : Screen[Act] =
+    // each cell readable alone: on a phone a row is a card, its cells one under another (page/web/index.html)
     val chains = Table(views.toList)(Column.text("Chain")(_.chain),
-      Column.text("On the policy")(v => v.status.fold("no node")(s => Office.money(s.balance))),
-      Column.text("Paid this period")(v => v.status.fold("")(s => s"${Office.money(s.spent)} of " +
-        Office.money(s.periodCap))),
-      Column.text("Your signature above")(v => v.status.fold("")(s => Office.money(s.approvalAbove))))
+      Column.text("On the policy")(v => v.status.fold("no node")(s => s"${Office.money(s.balance)} on the policy")),
+      Column.text("Paid this period")(v => v.status.fold("")(s => s"paid ${Office.money(s.spent)} of " +
+        s"${Office.money(s.periodCap)} this period")),
+      Column.text("Your signature")(v => v.status.fold("")(s =>
+        s"your signature above ${Office.money(s.approvalAbove)}")))
       .keyedBy(_.chain)
     def slot(r: Row) = s"row-${r.p.invoice}"
     val plan = Table(rows.toList)(
       Column.text("")(_.box),
-      Column.text("Window")(r => s"${r.p.from} – ${r.p.to}"),
-      Column.text("State")(_.label),
-      Column.text("Payee")(_.p.payee),
-      Column.text("Amount")(r => amount(r.p.amount)),
-      Column.text("Invoice")(r => r.p.invoice + (if r.p.monthly then " (monthly)" else "")),
-      Column.text("Chain")(_.p.chain.getOrElse("")),
+      Column.text("Payment")(r => s"${r.p.payee} — ${amount(r.p.amount)}"),
+      Column.text("Window")(r => s"${r.p.from} – ${r.p.to}: ${r.label}"),
+      Column.text("Invoice")(r => r.p.invoice + (if r.p.monthly then ", monthly" else "") +
+        r.p.chain.fold("")(c => s", on $c")),
       Column.text("Note")(r => Vector(r.p.note, if r.earliest == 0 then "" else
         s"the contract allows it from ${Bill.day(r.earliest)}").filter(_.nonEmpty).mkString("; ")),
       Column.slot("")(slot))

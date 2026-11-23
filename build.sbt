@@ -46,3 +46,38 @@ lazy val page = (project in file("page")).enablePlugins(ScalaJSPlugin).dependsOn
       "org.scalameta" %%% "munit" % "1.2.3" % Test),
     scalaJSUseMainModuleInitializer := true,
     Compile / mainClass := Some("okay.allowance.page.InThePage"))
+
+/** THE PAGE: `sbt web` — index.html, the script (the linked modules and the npm ones they import, bundled by esbuild,
+ * named by its content), the compiled contracts and the owner's standing orders, in page/target/web */
+val web = taskKey[File]("the owner's page in page/target/web")
+web := {
+  val base = (ThisBuild / baseDirectory).value
+  val out = (page / target).value / "web"
+  val linked = (page / Compile / fullLinkJS).value.data.publicModules.find(_.moduleID == "main").get.jsFileName
+  val from = (page / Compile / fullLinkJS / scalaJSLinkerOutputDirectory).value / linked
+  IO.delete(out)
+  IO.copyDirectory(base / "page" / "web", out)
+  if (scala.sys.process.Process(Seq("npx", "esbuild", from.getPath, "--bundle", "--format=esm", "--minify",
+    "--platform=browser", s"--outdir=$out", "--entry-names=main-[hash]"), base).! != 0) sys.error("esbuild failed")
+  val script = (out * "main-*.js").get.head.getName
+  IO.write(out / "index.html", IO.read(out / "index.html").replace("src=\"main.js\"", "src=\"" + script + "\""))
+  IO.copyFile(base / "out" / "contracts.json", out / "contracts.json")
+  IO.copyFile(base / "demo" / "bills.json", out / "bills.json")
+  out
+}
+
+/** THE PAGE TESTED IN A BROWSER: `sbt pageTest` — the page built, then page/browser/suite.mjs run on it (Playwright's
+ * chromium: PW_CHROMIUM, else the newest headless shell in Playwright's cache); fails on any scenario */
+val pageTest = taskKey[Unit]("the owner's page tested in a browser")
+pageTest := {
+  val base = (ThisBuild / baseDirectory).value
+  val out = web.value
+  val cache = file(sys.props("user.home")) / "Library" / "Caches" / "ms-playwright"
+  val shell = sys.env.get("PW_CHROMIUM").orElse(
+    Option(cache.listFiles).toVector.flatten.filter(_.getName.startsWith("chromium_headless_shell-"))
+      .sortBy(_.getName).lastOption
+      .flatMap(d => Option(d.listFiles).toVector.flatten.map(x => x / "chrome-headless-shell").find(_.exists))
+      .map(_.getPath))
+  if (scala.sys.process.Process(Seq("node", "page/browser/suite.mjs", out.getPath), base,
+    shell.toVector.map("PW_CHROMIUM" -> _): _*).! != 0) sys.error("pageTest: a scenario failed in the browser")
+}

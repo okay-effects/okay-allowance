@@ -30,6 +30,7 @@ object InThePage:
       contracts <- fetchText("contracts.json")
       bills <- fetchText("bills.json")
       demo <- Agent.demo(js.JSON.parse(contracts), Vector.empty)
+      _ = root.innerHTML = "" // the "setting up" line: the chains are up
       desk = DemoDesk(demo, Plan.seed(Bill.parse(bills)))
       _ <- Async.toFuture(Laminar.run(root, skin)(desk(OwnerPage.main[Page]())))
     yield ()).failed.foreach { e =>

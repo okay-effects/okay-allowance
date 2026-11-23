@@ -18,5 +18,9 @@
     "@noble/hashes": "^1.8.0",
     "solc": "0.8.30",
     "viem": "2.58.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "playwright": "1.58"
   }
 }
