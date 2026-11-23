@@ -16,7 +16,7 @@ const server = http.createServer((q, r) => {
 }).listen(0);
 const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
 for (const [name, options] of [['desktop', { viewport: { width: 1280, height: 900 }, deviceScaleFactor: 2 }],
-  ['phone', devices['iPhone 13']]]) {
+  ['phone', devices['iPhone 13']], ['site', { viewport: { width: 1000, height: 1250 } }]]) {
   const page = await browser.newPage(options);
   await page.route(/cloudflareinsights\.com/, r => r.fulfill({ status: 200, body: '' }));
   await page.goto(`http://localhost:${server.address().port}/`);
@@ -30,7 +30,8 @@ for (const [name, options] of [['desktop', { viewport: { width: 1280, height: 90
   await page.getByText('SW-EXTRA proposed by').waitFor();
   await page.getByRole('button', { name: 'The agent: pay what is due', exact: true }).click();
   await page.getByText('INT/2026-01: paid').waitFor();
-  await page.screenshot({ path: path.join(outDir, `page-${name}.png`), fullPage: true });
+  // the site's picture: the first screenful, 1000 × 1250, as the other apps' on okay-effects.github.io
+  await page.screenshot({ path: path.join(outDir, `page-${name}.png`), fullPage: name !== 'site' });
   await page.close();
 }
 await browser.close();

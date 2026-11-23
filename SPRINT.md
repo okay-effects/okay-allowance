@@ -41,7 +41,9 @@
   agent/owner/demo, tools add_invoice, plan, pay_due, approve, check, uncheck, edit, remove; CLI intake, pay-due;
   McpSuite rewritten for the flow; docs/mcp.md.
 - [ ] **solana** — later, only for a reason: Rust/Anchor, an SPL delegate as the allowance.
-- [~] **page** — (§14) the owner's page on okay-ui, the demo world in the page. Steps: (1) sbt modules core / root /
+- [x] **page** — DONE 2026-11-23: LIVE https://okay-effects.github.io/okay-allowance/ (gh-pages, `sbt publishSite`;
+  starts in ~2 s, page/browser/live.mjs); core/root/page modules, Office, Desk + OwnerPage, PageSuite 2, pageTest 3
+  scenarios in Chromium, phone cards; site section with screenshot. Was: (§14) the owner's page on okay-ui, the demo world in the page. Steps: (1) sbt modules core / root /
   page; (2) Office (shared by MCP and the page); (3) Desk effect + OwnerPage screens + demo handler; (4) web
   (esbuild, index.html footer+beacon) + Playwright test; (5) publishSite to gh-pages, Pages on; site section links
   the page. Later: through a wallet on a testnet (§4.4).

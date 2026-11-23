@@ -7,6 +7,10 @@ payments waiting for the owner's signature. The contract checks every payment; w
 model reading an invoice, or anyone who stole the agent's key — the most it can ever lose is the balance on the
 policy, within the owner's rules.
 
+**Try it: [the owner's page](https://okay-effects.github.io/okay-allowance/)** — three chains in your browser (Ethereum, Base,
+Cardano), the agent's plan of bills to review: approve, uncheck, edit, remove, sign; play the agent too. No wallet,
+no money.
+
 One agent, several chains at once: the same rules as a Solidity contract on EVM chains and as a Scalus validator
 on Cardano. On a random 120 payments the EVM contract, the Cardano script and a Scala model of the rules agree on
 every decision and its reason.
@@ -27,6 +31,9 @@ every decision and its reason.
 - **MCP** — two doors for any AI client (Claude Desktop, Claude Code, Cursor …): the agent's (`add_invoice`,
   `pay_due`, `check_payment`, …), which holds the agent's keys and cannot approve its own proposals, and the
   owner's (`approve`, `uncheck`, `edit`, `remove`, …), which needs no key. See [docs/mcp.md](docs/mcp.md).
+- **The owner's page** — the plan in the browser on [okay-ui](https://github.com/okay-effects/okay-ui): each payment
+  with its checkbox and its own buttons, the policies, the address book. `sbt pageTest` drives it in Chromium;
+  `sbt publishSite` publishes it.
 
 The design, decision by decision: [specs/allowance.md](specs/allowance.md).
 
