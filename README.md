@@ -32,7 +32,7 @@ The design, decision by decision: [specs/allowance.md](specs/allowance.md).
 
 ## Run
 
-Node 20+, sbt, JDK 17+.
+Node.js, sbt and a JDK.
 
 ```sh
 npm install
