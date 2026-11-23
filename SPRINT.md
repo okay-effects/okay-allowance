@@ -41,7 +41,10 @@
   agent/owner/demo, tools add_invoice, plan, pay_due, approve, check, uncheck, edit, remove; CLI intake, pay-due;
   McpSuite rewritten for the flow; docs/mcp.md.
 - [ ] **solana** — later, only for a reason: Rust/Anchor, an SPL delegate as the allowance.
-- [ ] **page** — the owner's view in the browser's EVM, then through a wallet on a testnet (§4.4).
+- [~] **page** — (§14) the owner's page on okay-ui, the demo world in the page. Steps: (1) sbt modules core / root /
+  page; (2) Office (shared by MCP and the page); (3) Desk effect + OwnerPage screens + demo handler; (4) web
+  (esbuild, index.html footer+beacon) + Playwright test; (5) publishSite to gh-pages, Pages on; site section links
+  the page. Later: through a wallet on a testnet (§4.4).
 - [ ] **testnet** — deploy on the hackathon's chain (Aevum, QDay) from its public docs; never run its starter kit
   here — only in an isolated environment, if at all (§4.5).
 - [ ] **submission** — public repository, docs (problem, architecture, flows, technologies), the demo, a video.

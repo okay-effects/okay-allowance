@@ -212,3 +212,25 @@ needs no key. `mcp demo` serves both in one process (three chains in memory). Th
 nodes (`"plan"` in the config, shared by the two servers), memory in the demo. Direct `pay` is gone from MCP.
 The owner's standing orders (`demo/bills.json`, `"bills"` in a config) seed the plan, approved. `bills` (§12)
 becomes `plan`. The CLI: `intake CONFIG DIR` adds a folder of invoices; `pay-due CONFIG` runs the payments (cron).
+
+## 14. The owner's page (2026-11-23)
+
+A page in the browser for the owner (and, in the demo, for playing the agent too), on okay-ui: the plan with each
+payment's checkbox and its own buttons — approve, uncheck/check, edit, remove, and for a payment waiting on the
+chain, sign it —, "approve all"; each chain's policy (balance, the period's spending and cap, the payees); the
+address book. In the demo the agent's side is on the page as well, marked as the agent's: take an invoice in (a
+form), pay what is due; and the demo's clock: a day, a week later. The whole demo world runs in the page: the EVM in
+JavaScript, Scalus's Cardano emulator, the plan in memory — no network, no wallet, no money.
+
+How:
+- THE OFFICE: the plan's operations as data (`Office`: plan rows with their labels and the contract's earliest
+  date, approve, check, edit, remove, intake, pay due, the requests, the status, the address book) — one class both
+  the MCP server (which words them) and the page (which shows them) use.
+- THE PAGE'S WORLD AS AN EFFECT: `Desk[X]` (Plan, Approve, Check, Edit, Remove, Intake, PayDue, Sign, Status,
+  Book, Later(days), Today) — the page program `OwnerPage.main[R: Has[Ui]: Has[Desk]]` asks it; the demo's handler
+  answers from an Office over the chains in memory (`Async`), a test's from the same. Its screens are okay-ui values.
+- THE BUILD: the code shared by node and the page in a module `core` (no node imports); the command line, MCP over
+  stdio and the plan file in the root (node); `page` (Scala.js, okay-ui) its own module. `sbt web` writes
+  page/target/web (index.html with the footer and Cloudflare's beacon, the script bundled by esbuild, the compiled
+  contracts); `sbt publishSite` pushes it to the repository's gh-pages branch, served at
+  okay-effects.github.io/okay-allowance. A Playwright test drives the page in Chromium.
