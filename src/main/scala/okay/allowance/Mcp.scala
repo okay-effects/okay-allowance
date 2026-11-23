@@ -42,7 +42,6 @@ final class McpServer(nodes: Map[String, Node], chains: Seq[String], book: Book,
       case _ => Vector.empty
     case _ => Vector.empty
   private def str(s: String) = Json.Str(s)
-  private def big(x: BigInt) = Agent.money(js.BigInt(x.toString))
   private def done(words: String): Future[ToolResult] = Future.successful(ToolResult.text(words))
   private def failed(words: String): Future[ToolResult] = Future.successful(ToolResult.error(words))
   private def obj(props: (String, String)*) = Json.obj("type" -> str("object"), "properties" -> Json.Obj(
@@ -104,28 +103,19 @@ final class McpServer(nodes: Map[String, Node], chains: Seq[String], book: Book,
     case Role.Owner => ownerTools ++ shared
     case Role.Demo => agentTools ++ ownerTools ++ shared
 
-  // ---- shared ----
+  // ---- the office: the plan's operations as data; here, worded ----
+  val office: Office = Office(nodes, chains, book, store, today, journal)
+  private def big(x: BigInt) = Office.money(x)
 
-  /** each chain's standing for the book's payees there: chain → (name, address, its standing) */
-  private def standing: Future[Map[String, Vector[(String, String, PayeeStatus)]]] =
-    Life.inOrder(chains.filter(nodes.contains)) { chain =>
-      val payees = book.payees.toVector.sortBy(_._1).flatMap((name, m) => m.get(chain).map(name -> _))
-      nodes(chain).status(payees.map(_._2)).map(s =>
-        chain -> payees.zip(s.payees).map { case ((n, a), p) => (n, a, p) })
-    }.map(_.toMap)
-
-  private def addressBook: Future[ToolResult] = standing.map { st =>
-    val rows = book.payees.toVector.sortBy(_._1).map { (name, m) =>
-      name -> chains.flatMap(c => m.get(c).map(a => (c, a, st.get(c).flatMap(_.find(_._1 == name)).map(_._3))))
-    }
-    val words = rows.map { (name, at) =>
-      (name +: at.map { (c, a, p) =>
+  private def addressBook: Future[ToolResult] = office.addressBook.map { rows =>
+    val words = rows.map { e =>
+      (e.name +: e.at.map { (c, a, p) =>
         s"  $c $a — " + p.fold("no node for this chain")(p =>
           if p.allowed then s"allowed, ${big(p.cap)} a period" else "not allowed on the policy")
       }).mkString("\n")
     }.mkString("\n")
-    val json = Json.obj("payees" -> Json.Arr(rows.map { (name, at) =>
-      Json.obj("name" -> str(name), "addresses" -> Json.Arr(at.toVector.map { (c, a, p) =>
+    val json = Json.obj("payees" -> Json.Arr(rows.map { e =>
+      Json.obj("name" -> str(e.name), "addresses" -> Json.Arr(e.at.map { (c, a, p) =>
         Json.obj("chain" -> str(c), "address" -> str(a), "allowed" -> Json.Bool(p.exists(_.allowed)),
           "cap" -> str(p.filter(_.allowed).fold("")(x => big(x.cap))))
       }))
@@ -133,133 +123,93 @@ final class McpServer(nodes: Map[String, Node], chains: Seq[String], book: Book,
     ToolResult(List(Content.Text(if words.isEmpty then "the address book is empty" else words)), Some(json))
   }
 
-  /** THE PLAN, as it stands today: each line its checkbox ([x] approved and checked, [ ] unchecked, [?] proposed),
-   * window, state, payee, amount, invoice, chain, monthly, what for; the agent's note; the earliest date the contract
-   * allows when the payee's gap ends after the window opens */
-  private def planView(only: Option[String]): Future[ToolResult] =
+  /** THE PLAN, as it stands today: each line its checkbox, window, state, payee, amount, invoice, chain, monthly,
+   * what for; the agent's note; the earliest date the contract allows */
+  private def planView(only: Option[String]): Future[ToolResult] = office.plan.map { rows =>
     val now = today()
-    for
-      plan <- Planner.refresh(store, nodes, now)
-      st <- standing
-    yield
-      def earliest(p: Planned): Long =
-        if !p.open then 0
-        else (for c <- p.chain; rows <- st.get(c); r <- rows.find(_._1.equalsIgnoreCase(p.payee))
-          yield r._3.nextAt).filter(_ > math.max(p.opens, now)).getOrElse(0L)
-      val shown = plan.items.filter(p => only.map(_.toLowerCase).forall {
-        case "open" => p.open
-        case s => p.label(now).startsWith(s)
-      })
-      val lines = shown.map { p =>
-        val box = if !p.open then "   " else if !p.approved then "[?]" else if p.checked then "[x]" else "[ ]"
-        val e = earliest(p)
-        val limit = if e == 0 then "" else if e > p.closes then
-          s"the contract allows it only from ${Bill.day(e)}, after the window"
-          else s"the contract allows it from ${Bill.day(e)}"
-        val notes = Vector(p.note, limit).filter(_.nonEmpty).mkString("; ")
-        s"$box ${p.from} – ${p.to}  ${p.label(now)}: ${p.payee}, ${p.amount} tUSD8, ${p.invoice}" +
-          p.chain.fold("")(c => s", on $c") + (if p.monthly then ", monthly" else "") +
-          (if p.about.isEmpty then "" else s" (${p.about})") +
-          (if notes.isEmpty then "" else s" — $notes")
-      }
-      val head = s"today ${Bill.day(now)}; " + (if shown.isEmpty then "nothing in the plan" + only.fold("")(o =>
-        s" ($o)") else s"${shown.size} payment(s); [x] approved, [ ] unchecked, [?] waiting for the owner's review")
-      val json = Json.obj("today" -> str(Bill.day(now)), "plan" -> Json.Arr(shown.map { p =>
-        Json.obj("invoice" -> str(p.invoice), "payee" -> str(p.payee), "amount" -> str(p.amount),
-          "chain" -> str(p.chain.getOrElse("")), "for" -> str(p.about), "from" -> str(p.from), "to" -> str(p.to),
-          "every" -> str(p.every), "approved" -> Json.Bool(p.approved), "checked" -> Json.Bool(p.checked),
-          "state" -> str(p.label(now)), "note" -> str(p.note), "tx" -> str(p.tx),
-          "earliest" -> str(if earliest(p) == 0 then "" else Bill.day(earliest(p))))
-      }))
-      ToolResult(List(Content.Text((head +: lines).mkString("\n"))), Some(json))
+    val shown = rows.filter(r => only.map(_.toLowerCase).forall {
+      case "open" => r.p.open
+      case s => r.label.startsWith(s)
+    })
+    val lines = shown.map { r =>
+      val p = r.p
+      val limit = if r.earliest == 0 then "" else if r.earliest > p.closes then
+        s"the contract allows it only from ${Bill.day(r.earliest)}, after the window"
+        else s"the contract allows it from ${Bill.day(r.earliest)}"
+      val notes = Vector(p.note, limit).filter(_.nonEmpty).mkString("; ")
+      s"${if r.box.isEmpty then "   " else r.box} ${p.from} – ${p.to}  ${r.label}: ${p.payee}, ${p.amount} tUSD8, " +
+        s"${p.invoice}" + p.chain.fold("")(c => s", on $c") + (if p.monthly then ", monthly" else "") +
+        (if p.about.isEmpty then "" else s" (${p.about})") + (if notes.isEmpty then "" else s" — $notes")
+    }
+    val head = s"today ${Bill.day(now)}; " + (if shown.isEmpty then "nothing in the plan" + only.fold("")(o =>
+      s" ($o)") else s"${shown.size} payment(s); [x] approved, [ ] unchecked, [?] waiting for the owner's review")
+    val json = Json.obj("today" -> str(Bill.day(now)), "plan" -> Json.Arr(shown.map { r =>
+      val p = r.p
+      Json.obj("invoice" -> str(p.invoice), "payee" -> str(p.payee), "amount" -> str(p.amount),
+        "chain" -> str(p.chain.getOrElse("")), "for" -> str(p.about), "from" -> str(p.from), "to" -> str(p.to),
+        "every" -> str(p.every), "approved" -> Json.Bool(p.approved), "checked" -> Json.Bool(p.checked),
+        "state" -> str(r.label), "note" -> str(p.note), "tx" -> str(p.tx),
+        "earliest" -> str(if r.earliest == 0 then "" else Bill.day(r.earliest)))
+    }))
+    ToolResult(List(Content.Text((head +: lines).mkString("\n"))), Some(json))
+  }
 
   private def status(only: Option[String]): Future[ToolResult] =
-    val shown = chains.filter(c => only.forall(_.equalsIgnoreCase(c)))
-    if shown.isEmpty then failed(s"no such chain: ${only.getOrElse("")}") else
-    Life.inOrder(shown) { chain =>
-      val payees = book.payees.toVector.sortBy(_._1).flatMap((name, m) => m.get(chain).map(name -> _))
-      nodes.get(chain) match
-        case None => Future.successful(s"$chain: no node")
-        case Some(n) => n.status(payees.map(_._2)).map { s =>
-          val head = s"$chain: ${big(s.balance)} on the policy; this period ${big(s.spent)} of ${big(s.periodCap)};" +
-            s" at most ${big(s.maxPayment)} a payment; above ${big(s.approvalAbove)} the owner approves;" +
-            (if s.paused then " PAUSED;" else "") + s" until ${Bill.day(s.expires)}"
-          val lines = payees.zip(s.payees).map { case ((name, _), p) =>
-            if !p.allowed then s"  $name: not allowed on the policy"
-            else s"  $name: ${big(p.spent)} of ${big(p.cap)} this period" +
-              (if p.nextAt == 0 then "" else s", next from ${Bill.day(p.nextAt)}")
-          }
-          (head +: lines).mkString("\n")
-        }
-    }.map(ls => ToolResult.text(ls.mkString("\n")))
+    if !chains.exists(c => only.forall(_.equalsIgnoreCase(c))) then failed(s"no such chain: ${only.getOrElse("")}")
+    else office.policies.map { views =>
+      ToolResult.text(views.filter(v => only.forall(_.equalsIgnoreCase(v.chain))).map { v =>
+        v.status match
+          case None => s"${v.chain}: no node"
+          case Some(s) =>
+            val head = s"${v.chain}: ${big(s.balance)} on the policy; this period ${big(s.spent)} of " +
+              s"${big(s.periodCap)}; at most ${big(s.maxPayment)} a payment; above ${big(s.approvalAbove)} the " +
+              "owner approves;" + (if s.paused then " PAUSED;" else "") + s" until ${Bill.day(s.expires)}"
+            (head +: v.payees.map { (name, _, p) =>
+              if !p.allowed then s"  $name: not allowed on the policy"
+              else s"  $name: ${big(p.spent)} of ${big(p.cap)} this period" +
+                (if p.nextAt == 0 then "" else s", next from ${Bill.day(p.nextAt)}")
+            }).mkString("\n")
+      }.mkString("\n"))
+    }
 
-  private def requests: Future[ToolResult] = Planner.refresh(store, nodes, today()).map { plan =>
-    val ws = plan.items.filter(_.state == "waiting")
+  private def requests: Future[ToolResult] = office.requests.map { ws =>
     ToolResult.text(if ws.isEmpty then "no payment is waiting for the owner's signature"
       else ws.map(p => s"${p.chain.getOrElse("")} request ${p.request}: ${p.invoice} — ${p.note}").mkString("\n"))
   }
 
   // ---- the agent ----
 
-  private def check(inv: Invoice): Future[ToolResult] = Agent.decide(inv, book, chains) match
-    case Decision.Refuse(reason, detail) =>
-      done(s"would be refused by the agent: ${Agent.explain(reason)}" + (if detail.isEmpty then "" else s" ($detail)"))
-    case Decision.Pay(payee, chain, address, amount) => nodes.get(chain) match
-      case None => done(Agent.explain("NoSuchChain", Vector(chain)))
-      case Some(n) =>
-        for t <- n.trial(address, amount, Agent.invoiceId(inv.id)); st <- n.status(Nil) yield
-          val money = Agent.money(amount)
-          ToolResult.text(
-            if !t.ok then s"would be refused by the contract on $chain: " +
-              Agent.explain(t.reason.getOrElse(""), t.args, payee)
-            else if BigInt(amount.toString) > st.approvalAbove then
-              s"$money to $payee on $chain: within the rules, above ${big(st.approvalAbove)} — it would wait for the " +
-                "owner's signature"
-            else s"$money to $payee on $chain would be paid")
-
   private def addInvoice(c: ToolCall): Future[ToolResult] = invoice(c) match
     case Left(e) => failed(e)
     case Right(inv) =>
-      val every = text(c.arguments, "every").getOrElse("once")
-      if store.load.find(inv.id).isDefined then failed(s"${inv.id} is in the plan already")
-      else if !Set("once", "month")(every) then failed("every: once or month")
-      else Planner.intake(inv, text(c.arguments, "from"), text(c.arguments, "to"), every, today(), nodes, chains,
-        book).map { p =>
-        store.load.add(p) match
-          case Left(e) => ToolResult.error(e)
-          case Right(plan) =>
-            store.save(plan)
-            ToolResult.text(p.state match
-              case "refused" => s"${p.invoice} listed as refused — ${p.note}"
-              case "paid" => s"${p.invoice}: ${p.note}"
-              case _ => s"${p.invoice} proposed: ${p.amount} tUSD8 to ${p.payee}" + p.chain.fold("")(c => s" on $c") +
-                s", ${p.from} – ${p.to}" + (if p.monthly then ", monthly" else "") +
-                (if p.note.isEmpty then "" else s" — ${p.note}") + "; it waits for the owner's approval")
+      office.intake(inv, text(c.arguments, "from"), text(c.arguments, "to"), text(c.arguments, "every")
+        .getOrElse("once")).map {
+        case Left(e) => ToolResult.error(e)
+        case Right(p) => ToolResult.text(p.state match
+          case "refused" => s"${p.invoice} listed as refused — ${p.note}"
+          case "paid" => s"${p.invoice}: ${p.note}"
+          case _ => s"${p.invoice} proposed: ${p.amount} tUSD8 to ${p.payee}" + p.chain.fold("")(c => s" on $c") +
+            s", ${p.from} – ${p.to}" + (if p.monthly then ", monthly" else "") +
+            (if p.note.isEmpty then "" else s" — ${p.note}") + "; it waits for the owner's approval")
       }
 
-  private def payDue: Future[ToolResult] =
-    Planner.payDue(store, nodes, chains, book, today(), journal).map { done =>
-      ToolResult.text(if done.isEmpty then s"nothing due today (${Bill.day(today())})"
-        else done.map(p => s"${p.invoice}: " + (p.state match
-          case "paid" => p.note
-          case "waiting" => p.note
-          case "open" => p.note
-          case _ => s"refused — ${p.note}")).mkString("\n"))
-    }
+  private def payDue: Future[ToolResult] = office.payDue.map { done =>
+    ToolResult.text(if done.isEmpty then s"nothing due today (${Bill.day(today())})"
+      else done.map(p => s"${p.invoice}: " + (if p.state == "refused" then s"refused — ${p.note}" else p.note))
+        .mkString("\n"))
+  }
 
   // ---- the owner ----
 
-  private def owner(f: Plan => Either[String, Plan], said: String): Future[ToolResult] =
-    f(store.load) match
-      case Left(e) => failed(e)
-      case Right(p) => store.save(p); done(said)
+  private def owner(r: Either[String, Unit], said: String): Future[ToolResult] =
+    r.fold(failed, _ => done(said))
 
   private val tools: Tools[Async] = new Tools[Async]:
     def list = pure[List[ToolSpec], Async](specs)
     def call(c: ToolCall): ToolResult ! Async = fromFuture[ToolResult, Async](
       if !specs.exists(_.name == c.name) then failed(s"no such tool here: ${c.name}")
       else c.name match
-        case "check_payment" => invoice(c).fold(failed, check)
+        case "check_payment" => invoice(c).fold(failed, inv => office.check(inv).map(v => ToolResult.text(v.words)))
         case "add_invoice" => addInvoice(c)
         case "pay_due" => payDue
         case "plan" => planView(text(c.arguments, "state"))
@@ -267,17 +217,17 @@ final class McpServer(nodes: Map[String, Node], chains: Seq[String], book: Book,
         case "requests" => requests
         case "address_book" => addressBook
         case "approve" =>
-          if flag(c.arguments, "all") then owner(p => Right(p.approveAll), "every open payment approved")
+          if flag(c.arguments, "all") then owner(office.approveAll, "every open payment approved")
           else strings(c.arguments, "invoices") match
             case Vector() => failed("invoices (a list) or all: true")
-            case ids => owner(_.approve(ids), s"approved: ${ids.mkString(", ")}")
+            case ids => owner(office.approve(ids), s"approved: ${ids.mkString(", ")}")
         case "uncheck" | "check" | "remove" | "edit" => text(c.arguments, "invoice") match
           case None => failed("invoice is required")
           case Some(id) => c.name match
-            case "uncheck" => owner(_.check(id, on = false), s"$id unchecked: not paid this time")
-            case "check" => owner(_.check(id, on = true), s"$id checked")
-            case "remove" => owner(_.remove(id), s"$id removed from the plan")
-            case _ => owner(_.edit(id, text(c.arguments, "amount"), text(c.arguments, "from"),
+            case "uncheck" => owner(office.setChecked(id, on = false), s"$id unchecked: not paid this time")
+            case "check" => owner(office.setChecked(id, on = true), s"$id checked")
+            case "remove" => owner(office.remove(id), s"$id removed from the plan")
+            case _ => owner(office.edit(id, text(c.arguments, "amount"), text(c.arguments, "from"),
               text(c.arguments, "to"), text(c.arguments, "every")), s"$id changed")
         case other => failed(s"no such tool: $other"))
 
