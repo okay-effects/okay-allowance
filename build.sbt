@@ -33,3 +33,16 @@ lazy val root = (project in file(".")).enablePlugins(ScalaJSPlugin).dependsOn(co
       "org.scalameta" %%% "munit" % "1.2.3" % Test),
     scalaJSUseMainModuleInitializer := true,
     Compile / mainClass := Some("okay.allowance.Main"))
+
+/** THE OWNER'S PAGE (§14): okay-ui screens over the demo's chains in the browser; `sbt web` (below) bundles it */
+lazy val page = (project in file("page")).enablePlugins(ScalaJSPlugin).dependsOn(core)
+  .settings(name := "okay-allowance-page", esModules,
+    resolvers ++= Seq("okay-faces" at "https://okay-effects.github.io/okay-faces/maven",
+      "okay-http" at "https://okay-effects.github.io/okay-http/maven",
+      "okay-ui" at "https://okay-effects.github.io/okay-ui/maven"),
+    libraryDependencies ++= Seq("io.github.okay-effects" %%% "okay-ui-scala3" % "0.1.0",
+      "io.github.okay-effects" %%% "okay-ui-faces" % "0.1.0",
+      "io.github.okay-effects" %%% "okay-ui" % "0.1.0",
+      "org.scalameta" %%% "munit" % "1.2.3" % Test),
+    scalaJSUseMainModuleInitializer := true,
+    Compile / mainClass := Some("okay.allowance.page.InThePage"))
