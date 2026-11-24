@@ -28,6 +28,10 @@ case class PolicyState(owner: PubKeyHash, agent: PubKeyHash, token: AssetClass, 
     spent: BigInt, payees: List[Payee], invoices: ByteString)
     derives FromData, ToData
 
+/** what a payment's output to the payee carries as its inline datum: which policy paid it, for which invoice —
+  * so one output answers one payment only (audit C1, double satisfaction) */
+case class Receipt(policy: PolicyId, invoice: ByteString) derives FromData, ToData
+
 enum PolicyAction derives FromData, ToData:
     /** `proof`: the invoice is not among those paid (a non-membership proof of the MPF) */
     case Pay(payee: Credential, amount: BigInt, invoice: ByteString, proof: Proof)
@@ -45,7 +49,7 @@ enum PolicyMint derives FromData, ToData:
   * The attacks, and what stops each:
   *   - A STRANGER, OR THE OWNER'S KEY ALONE, PAYS: only the agent's signature opens Pay (NotAgent).
   *   - THE AGENT PAYS ITSELF, OR AN ADDRESS FROM AN INVOICE: only an allowed payee's credential (PayeeNotAllowed);
-  *     the amount must reach that credential's outputs (NotPaid).
+  *     the amount must reach that credential's outputs, each naming this payment (NotPaid).
   *   - THE AGENT TAKES MORE THAN IT PAYS: the one output back holds the balance less the amount, exactly, and the
   *     next state, exactly, compared as data (BalanceChanged, StateChanged).
   *   - TWICE THE SAME INVOICE: every invoice paid is in the MPF whose root the state keeps; a payment proves its
@@ -126,8 +130,15 @@ object SpendPolicy extends DataParameterizedValidator {
                 require(out.value.quantityOf(st.token.policy, st.token.name) == balance - amount, BalanceChanged)
                 require(out.value.getLovelace >= own.value.getLovelace, BalanceChanged)
                 require(holdsOnly(out.value, ownHash, st.token), OnlyTheToken)
+                // only outputs that name this payment count (audit C1): another policy, or another invoice, in the same
+                // transaction cannot count the same output
+                val receipt = Receipt(ownHash, invoice).toData
                 val got = tx.outputs.foldLeft(BigInt(0)) { (acc, o) =>
-                    if o.address.credential === payee then acc + o.value.quantityOf(st.token.policy, st.token.name)
+                    val ours = o.datum match
+                        case OutputDatum.OutputDatum(d) => d == receipt
+                        case _                          => false
+                    if o.address.credential === payee && ours then
+                        acc + o.value.quantityOf(st.token.policy, st.token.name)
                     else acc
                 }
                 require(got >= amount, NotPaid)
@@ -208,7 +219,7 @@ object SpendPolicy extends DataParameterizedValidator {
     inline val InsufficientBalance = "InsufficientBalance: more than the policy holds"
     inline val StateChanged = "StateChanged: the next state is not the one the rules give"
     inline val BalanceChanged = "BalanceChanged: the policy keeps its balance less the amount, and its ada"
-    inline val NotPaid = "NotPaid: the payee's outputs do not get the amount"
+    inline val NotPaid = "NotPaid: the payee's outputs do not get the amount, each naming this payment"
     inline val DepositNothing = "DepositNothing: a deposit adds the token"
     inline val InlineDatumRequired = "InlineDatumRequired: an inline datum is required"
     inline val BadKeys = "BadKeys: the owner and the agent are 28-byte key hashes"

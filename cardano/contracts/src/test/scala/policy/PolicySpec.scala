@@ -45,6 +45,9 @@ class PolicySpec extends AnyFunSuite, ScalusTest {
     private def out(s: PolicyState, value: Value, at: Address = home) =
         TxOut(at, value, OutputDatum.OutputDatum(s.toData))
     private def to(c: Credential, v: Value) = TxOut(Address(c, POption.None), v, OutputDatum.NoOutputDatum)
+    /** a payment's output to the payee, naming the payment: `by` the policy that pays, for invoice `id` */
+    private def paid(c: Credential, v: Value, id: String, by: PolicyId = policy) =
+        TxOut(Address(c, POption.None), v, OutputDatum.OutputDatum(Receipt(by, inv(id)).toData))
 
     private def spend(ins: List[TxInInfo], outs: List[TxOut], action: PolicyAction, signers: List[PubKeyHash],
         range: Interval = Interval.always, minted: Value = Value.zero): Result =
@@ -75,7 +78,7 @@ class PolicySpec extends AnyFunSuite, ScalusTest {
         val n = if next == null then after(s, who, amount, id, at) else next
         val pr = if proof == null then trie(s).proveNonMembership(inv(id)) else proof
         val b = if back == null then inValue - tusd(amount) else back
-        val o = if outs == null then List(out(n, b), to(who, ada(2_000_000) + tusd(amount))) else outs
+        val o = if outs == null then List(out(n, b), paid(who, ada(2_000_000) + tusd(amount), id)) else outs
         spend(List(TxInInfo(ref, out(s, inValue))), o, PolicyAction.Pay(who, amount, inv(id), pr), signers,
             Interval.between(at, if until < 0 then at + 600_000 else until), minted)
 
@@ -164,6 +167,25 @@ class PolicySpec extends AnyFunSuite, ScalusTest {
         assert(pay(cloud, 90, outs = List(out(n, held - tusd(90), other), to(cloud, tusd(90))))
             .failsWith("SameAddress"))
         assert(pay(cloud, 90, minted = nft).failsWith("NoMint"))
+    }
+    test("AUDIT C1, double satisfaction: two policies paying one payee, one output counted by both") {
+        // another policy (another owner's, the same agent) in the same transaction, paying the same payee 90: one
+        // output of 90 to the payee is all both scripts see; the other 90 goes to the agent
+        val other = TestUtil.mockScriptHash(8)
+        val otherHome = Address(Credential.ScriptCredential(other), POption.None)
+        val otherHeld = ada(5_000_000) + Value(other, SpendPolicy.stateName, 1) + tusd(1000)
+        val n = after(st, cloud, 90, "INV-1", t0 + day)
+        val ins = List(TxInInfo(ref, out(st, held)), TxInInfo(TestUtil.mockTxOutRef(10, 0), out(st, otherHeld,
+            otherHome)))
+        val outs = List(out(n, held - tusd(90)), out(n, otherHeld - tusd(90), otherHome),
+            paid(cloud, ada(2_000_000) + tusd(90), "INV-1"), to(Credential.PubKeyCredential(agent), tusd(90)))
+        val tx = TxInfo.placeholder.copy(inputs = ins, outputs = outs, signatories = List(agent),
+            validRange = Interval.between(t0 + day, t0 + day + 600_000))
+        def run(own: TxOutRef) = program.runWithDebug(ScriptContext(tx, PolicyAction.Pay(cloud, 90, inv("INV-1"),
+            Trie.empty.proveNonMembership(inv("INV-1"))).toData, ScriptInfo.SpendingScript(own, POption.None)))
+        // the output names the first policy: it is that one's payment; the other policy cannot count it
+        assert(run(ref).isSuccess, run(ref).explain)
+        assert(run(TestUtil.mockTxOutRef(10, 0)).failsWith("NotPaid"))
     }
     test("a forged policy: an input without the NFT") {
         val r = spend(List(TxInInfo(ref, out(st, ada(5_000_000) + tusd(1000)))), List(out(st, tusd(910)),

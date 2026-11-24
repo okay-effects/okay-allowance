@@ -36,6 +36,9 @@ case class PolicyState(owner: PubKeyHash, agent: PubKeyHash, token: AssetClass, 
     case scalus.cardano.onchain.plutus.prelude.Option.Some(p) => Some(p)
     case _ => None
 
+/** what a payment's output to the payee carries: which policy paid it, for which invoice (audit C1) */
+case class Receipt(policy: ByteString, invoice: ByteString) derives FromData, ToData
+
 enum PolicyAction derives FromData, ToData:
   case Pay(payee: Credential, amount: BigInt, invoice: ByteString, proof: Proof)
   case Deposit
@@ -99,7 +102,8 @@ object Policy:
       .spend(policy, PolicyAction.Pay(who, amount, invoice, proof), script)
       .payTo(address(script, env.network), policy.output.value - token(state, amount),
         state.after(who, amount, root, at))
-      .payTo(to, LValue.ada(2) + token(state, amount))
+      // the payee's output names this payment: the policy and the invoice (audit C1)
+      .payTo(to, LValue.ada(2) + token(state, amount), Receipt(script.scriptHash, invoice))
       .requireSignature(AddrKeyHash(state.agent.hash))
       .validDuring(ValidityInterval(Some(from), Some(from + 600)))
     if amount > state.approvalAbove then b.requireSignature(AddrKeyHash(state.owner.hash)) else b
