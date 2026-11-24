@@ -1,5 +1,6 @@
 package okay.allowance
 
+import scala.concurrent.Future
 import scala.scalajs.js
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
 
@@ -167,4 +168,79 @@ class ContractSuite extends munit.FunSuite:
         usd(400), usd(300), usd(100), c.now + js.BigInt((365 * Day).toString)).map(_ => "").recover { case e =>
           e.getMessage }
     yield assert(bad.contains("NotAToken"), bad)
+  }
+
+  test("AUDIT invariants: 150 random steps — the agent, an attacker, strangers topping up, the clock — and after each") {
+    var seed = 23L
+    def rnd(): Double = { seed = (seed * 1103515245 + 12345) % (1L << 31); seed.toDouble / (1L << 31) }
+    def pick[A](xs: Vector[A]): A = xs((rnd() * xs.size).toInt)
+    val allowed = Rules.demo.payees.map(p => p.name -> Rules.units(p.cap)).toMap
+    for
+      w <- Life(Files.compiled, stopAfter = "created")
+      c = w.chain; p = w.parties
+      start = c.now.toString.toLong
+      period = 30 * Day
+      bal = (n: String) => c.view(w.token, "TestUSD", "balanceOf", p(n).address).map(x => BigInt(x.toString))
+      polBal = () => c.view(w.token, "TestUSD", "balanceOf", w.policy).map(x => BigInt(x.toString))
+      watched = Vector("attacker", "agent", "gym", "owner", "stranger")
+      before <- Life.inOrder(watched)(n => bal(n).map(n -> _)).map(_.toMap)
+      problems <- {
+        var expected = Rules.units(1_000) // on the policy
+        var others = before // what the watched may hold: only what they put in or took out themselves
+        var paid = Vector.empty[(String, BigInt, Long, String)] // payee, amount, period, invoice
+        val found = scala.collection.mutable.ArrayBuffer.empty[String]
+        Life.inOrder(0 until 150) { i =>
+          val r = rnd()
+          val step: Future[Unit] =
+            if r < 0.15 then Future.successful(c.advance((rnd() * 5 * Day).toLong))
+            else if r < 0.25 then // a stranger tops the policy up
+              val x = Rules.units(math.round(rnd() * 50 + 1).toDouble)
+              for
+                _ <- c.call(p("stranger"), w.token, "TestUSD", "mint", p("stranger").address, js.BigInt(x.toString))
+                _ <- c.call(p("stranger"), w.token, "TestUSD", "approve", w.policy, js.BigInt(x.toString))
+                o <- c.call(p("stranger"), w.policy, "SpendPolicy", "deposit", js.BigInt(x.toString))
+              yield if o.ok then expected += x
+            else if r < 0.40 then // the attacker tries the owner's and the agent's doors
+              val tries = Vector[() => Future[Outcome]](
+                () => c.call(p("attacker"), w.policy, "SpendPolicy", "pay", p("attacker").address, usd(10),
+                  invoice(s"X-$i")),
+                () => c.call(p("attacker"), w.policy, "SpendPolicy", "withdraw", usd(10), p("attacker").address),
+                () => c.call(p("attacker"), w.policy, "SpendPolicy", "setPayee", p("attacker").address, true, usd(1e6),
+                  js.BigInt(0)),
+                () => c.call(p("attacker"), w.policy, "SpendPolicy", "setAgent", p("attacker").address),
+                () => c.call(p("attacker"), w.policy, "SpendPolicy", "close", p("attacker").address))
+              pick(tries)().map(o => if o.ok then found += s"step $i: the attacker got through")
+            else // the agent pays someone: allowed or not, any amount, an invoice new or reused
+              val who = pick(Vector("internet provider", "cloud hosting", "electricity", "software licence",
+                "attacker", "agent", "gym", "stranger"))
+              // most of them ordinary bills; some above the threshold (requests) or the most a payment
+              val x = Rules.units(math.round((if rnd() < 0.8 then 1 + rnd() * 99 else 100 + rnd() * 220) * 100) / 100.0)
+              val id = if rnd() < 0.2 && paid.nonEmpty then pick(paid)._4 else s"R-$i"
+              c.call(p("agent"), w.policy, "SpendPolicy", "pay", p(who).address, js.BigInt(x.toString), invoice(id))
+                .map { o =>
+                  if o.ok && o.events.exists(_.name == "Paid") then
+                    expected -= x; paid :+= ((who, x, (c.now.toString.toLong - start) / period, id))
+                }
+          for
+            _ <- step
+            pb <- polBal()
+            now <- Life.inOrder(watched)(n => bal(n).map(n -> _)).map(_.toMap)
+          yield
+            // the stranger's own mints are its own: what it holds may only fall by its deposits
+            if pb != expected then found += s"step $i: the policy holds $pb, expected $expected"
+            for n <- watched if n != "stranger" && now(n) > others(n) do found += s"step $i: $n got ${now(n) - others(n)}"
+            others = now
+            if paid.exists((who, _, _, _) => !allowed.contains(who)) then found += s"step $i: paid a payee not allowed"
+            if paid.exists(_._2 > Rules.units(300)) then found += s"step $i: a payment above the most"
+            if paid.map(_._4).distinct.size != paid.size then found += s"step $i: an invoice paid twice"
+            for (per, ps) <- paid.groupBy(_._3) do
+              if ps.map(_._2).sum > Rules.units(400) then found += s"step $i: period $per above its cap"
+              for (who, qs) <- ps.groupBy(_._1) if qs.map(_._2).sum > allowed.getOrElse(who, BigInt(0)) do
+                found += s"step $i: $who above its cap in period $per"
+        }.map(_ => (found.toVector, paid.size))
+      }
+    yield
+      val (found, payments) = problems
+      assertEquals(found, Vector.empty)
+      assert(payments >= 10, s"only $payments payments: the walk did not exercise paying")
   }
