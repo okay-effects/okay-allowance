@@ -40,7 +40,17 @@
   turn; monthly series roll on; Plan.scala (pure ops + PlanStore memory/file), Agent.payDue, McpServer roles
   agent/owner/demo, tools add_invoice, plan, pay_due, approve, check, uncheck, edit, remove; CLI intake, pay-due;
   McpSuite rewritten for the flow; docs/mcp.md.
-- [ ] **solana** — later, only for a reason: Rust/Anchor, an SPL delegate as the allowance.
+- [ ] **solana** — (§15) Solana as a chain of okay-allowance, the same rules, prepaid. How: (1) the policy as a
+  program in Rust (Anchor): a vault token account owned by a PDA holding the stablecoin; a state account with the
+  owner, the agent, the limits, a bounded list of payees (cap, gap, spending, last); EACH INVOICE PAID = a PDA of
+  its id created by the payment (exists = paid, forever; its rent the agent's), so once-only needs no tree;
+  above approvalAbove the owner a second signer; errors by SpendPolicy.sol's names. (2) Its tests in Rust
+  (LiteSVM), every refusal and the attacks as on the other chains. (3) In the agent: a Solana Node (Scala.js over
+  /kit; the tests and the demo on LiteSVM's node bindings if they run in node — checked first, else
+  solana-test-validator), status and paid from the accounts. (4) RulesSuite with a third chain: EVM, Cardano and
+  Solana agree with the model. (5) The demo and the page with four chains. Later, apart: Payment Channels for
+  metered services as another kind of payment. Toolchain (Rust, Anchor via avm) from official sources only, at the
+  owner's word; no starter kits.
 - [x] **page** — DONE 2026-11-23: LIVE https://okay-effects.github.io/okay-allowance/ (gh-pages, `sbt publishSite`;
   starts in ~2 s, page/browser/live.mjs); core/root/page modules, Office, Desk + OwnerPage, PageSuite 2, pageTest 3
   scenarios in Chromium, phone cards; site section with screenshot. Was: (§14) the owner's page on okay-ui, the demo world in the page. Steps: (1) sbt modules core / root /

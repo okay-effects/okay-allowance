@@ -234,3 +234,28 @@ How:
   page/target/web (index.html with the footer and Cloudflare's beacon, the script bundled by esbuild, the compiled
   contracts); `sbt publishSite` pushes it to the repository's gh-pages branch, served at
   okay-effects.github.io/okay-allowance. A Playwright test drives the page in Chromium.
+
+## 15. Beside Solana AI (2026-11-24)
+
+On 2026-11-23 the Solana Foundation launched Solana AI (solana.ai): Payment Channels (funds put into a contract
+with a spending limit, the agent authorising spends by signed off-chain messages, the sum settled on-chain in
+batches, the rest returned; launch partner Alibaba Cloud; over a million messages a second inside channels in a test
+of 100,000 wallets), pay.sh (an agent pays per call in USDC for services and data, HTTP 402), a Developer Platform
+(wallets, payments, a spending policy such as a daily limit, set through its API), the Agent Kit, an agent
+registry, a developers' MCP server, Milo (a trading agent) and Confidential Compute (testnet, not audited).
+
+THE SAME CHOICE: money put on a contract with a limit, the agent spending only from it, the rest the owner's — §8.1.
+
+DIFFERENT WORK: theirs is a machine paying machines — metered calls, data, compute, at a huge rate; ours is an
+agent paying people's and companies' bills under the owner's rules. What okay-allowance has that the material
+published does not describe: payees only from the owner's address book (an address on an invoice is never used;
+another one is invoice fraud); every rule in the contract, not in a platform's API — per payment, per payee, per
+period, the least time between payments to a payee, each invoice once, the owner's signature above a threshold;
+the plan the owner reviews (approve, uncheck for this time, edit, remove; monthly bills come again); one agent on
+EVM chains and Cardano under the same rules (§11); MCP as the payments' doors — the agent's, which cannot approve,
+and the owner's, which needs no key (§13). What they have and it does not: real infrastructure, partners, a rate
+of micropayments, pay-per-call, an agent registry, confidential compute; okay-allowance runs in memory only so far,
+unaudited, one author.
+
+THE TWO FIT TOGETHER: a channel for metered use, the policy for bills. Solana becomes a chain of okay-allowance
+(SPRINT solana) — the reason the board asked for.

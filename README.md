@@ -57,6 +57,28 @@ On real nodes (`run`, `intake`, `pay-due`, `mcp agent|owner` with a config of RP
 files kept outside the repository) the EVM side is written but not yet run against a testnet; the Cardano side runs
 on the emulator only.
 
+## Beside Solana AI
+
+On 2026-11-23 the Solana Foundation launched [Solana AI](https://solana.ai) for autonomous agents: Payment Channels
+(funds put into a contract with a spending limit, spends authorised by signed messages off-chain, settled in
+batches, the rest returned), pay.sh (pay per call in USDC), wallets with a spending policy in a platform API, the
+Agent Kit, an agent registry.
+
+The same choice at the heart: money on a contract with a limit, the agent spending only from it. Different work:
+
+| | Solana AI | okay-allowance |
+|---|---|---|
+| Pays for | machines: metered calls, data, compute | bills: people and companies the owner pays |
+| To whom | whoever asks for payment | only payees in the owner's address book; another address on an invoice is invoice fraud |
+| Rules | a channel's limit; a daily limit in the platform's API | all in the contract: per payment, per payee, per period, a payee's least gap, each invoice once, the owner's signature above a threshold |
+| The owner | approves a spend | reviews a plan: approve, uncheck for this time, edit, remove; monthly bills come again |
+| Chains | Solana | EVM chains and Cardano at once, the same rules (Solana next) |
+| MCP | for developers' IDEs | the payments' doors: the agent's (cannot approve), the owner's (no key) |
+
+They have what this does not: real infrastructure, partners, micropayments at scale. The two fit together — a channel
+for metered use, the policy for bills; Solana is to become a chain of okay-allowance
+([specs/allowance.md §15](specs/allowance.md)).
+
 ## Status
 
 Built for the Aevum Builder Challenge (a tUSD8 payment flow), independent of any chain's starter kit. Not audited:
