@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity 0.8.30;
 
 /// The ERC-20 calls the policy makes.
 interface IERC20 {
@@ -196,9 +196,10 @@ contract SpendPolicy {
 
     /// the owner takes everything back; the agent's door shut (paused, no agent)
     function close(address to) external onlyOwner {
-        uint256 bal = token.balanceOf(address(this));
+        // the door shut first, then the balance read and sent (checks, effects, interactions)
         paused = true;
         agent = address(0);
+        uint256 bal = token.balanceOf(address(this));
         if (bal > 0) send(to, bal);
         emit Closed(to, bal);
     }
