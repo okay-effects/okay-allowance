@@ -137,3 +137,34 @@ class ContractSuite extends munit.FunSuite:
       }
     yield assertEquals(agreed.count(identity), 80)
   }
+
+  test("AUDIT E1: a token returning nothing (as USDT on Ethereum): deposit, pay, withdraw, close all work") {
+    for
+      w <- Life(Files.compiled, stopAfter = "created")
+      c = w.chain; p = w.parties; owner = p("owner"); agent = p("agent"); cloud = p("cloud hosting")
+      t <- c.deploy(owner, "NoBoolUSD")
+      _ <- c.call(owner, t, "NoBoolUSD", "mint", owner.address, usd(1_000))
+      pol <- c.deploy(owner, "SpendPolicy", t, agent.address, js.BigInt((30 * Day).toString), usd(400), usd(300),
+        usd(100), c.now + js.BigInt((365 * Day).toString))
+      _ <- c.call(owner, pol, "SpendPolicy", "setPayee", cloud.address, true, usd(200), js.BigInt(0))
+      _ <- c.call(owner, t, "NoBoolUSD", "approve", pol, usd(500))
+      d <- c.call(owner, pol, "SpendPolicy", "deposit", usd(500))
+      pd <- c.call(agent, pol, "SpendPolicy", "pay", cloud.address, usd(90), invoice("NB-1"))
+      wd <- c.call(owner, pol, "SpendPolicy", "withdraw", usd(10), owner.address)
+      cl <- c.call(owner, pol, "SpendPolicy", "close", owner.address)
+      got <- c.view(t, "NoBoolUSD", "balanceOf", cloud.address)
+      left <- c.view(t, "NoBoolUSD", "balanceOf", pol)
+    yield
+      assertEquals(Vector(d, pd, wd, cl).map(o => (o.ok, o.reason)), Vector.fill(4)((true, None)))
+      assertEquals((got.toString, left.toString), (usd(90).toString, "0"))
+  }
+
+  test("AUDIT E1: a policy on an address with no token behind it is refused at its birth") {
+    for
+      w <- Life(Files.compiled, stopAfter = "created")
+      c = w.chain; owner = w.parties("owner")
+      bad <- c.deploy(owner, "SpendPolicy", owner.address, w.parties("agent").address, js.BigInt((30 * Day).toString),
+        usd(400), usd(300), usd(100), c.now + js.BigInt((365 * Day).toString)).map(_ => "").recover { case e =>
+          e.getMessage }
+    yield assert(bad.contains("NotAToken"), bad)
+  }

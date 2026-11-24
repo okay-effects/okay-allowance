@@ -30,6 +30,7 @@ contract SpendPolicy {
     error TransferFailed();
     error BadPeriod();
     error InsufficientBalance(uint256 balance, uint256 amount);
+    error NotAToken();
 
     struct Payee {
         bool allowed;
@@ -77,6 +78,8 @@ contract SpendPolicy {
     constructor(IERC20 token_, address agent_, uint256 period_, uint256 periodCap_, uint256 maxPayment_,
         uint256 approvalAbove_, uint256 expiresAt_) {
         if (period_ == 0) revert BadPeriod();
+        // a call to an address with no code succeeds and returns nothing: no transfer would ever fail (audit E1)
+        if (address(token_).code.length == 0) revert NotAToken();
         owner = msg.sender;
         token = token_;
         agent = agent_;
@@ -158,14 +161,25 @@ contract SpendPolicy {
         spent = (spentPeriod == now_ ? spent : 0) + amount;
         spentPeriod = now_;
         paidInvoice[invoice] = true;
-        if (!token.transfer(payee, amount)) revert TransferFailed();
+        send(payee, amount);
         emit Paid(payee, amount, invoice, approvedByOwner);
+    }
+
+    /// A TOKEN CALL THAT WORKS WITH EVERY ERC-20 (audit E1): some return true, some return nothing (USDT on Ethereum);
+    /// success is the call not reverting and, when it returns data, that data being true
+    function tokenCall(bytes memory data) private {
+        (bool ok, bytes memory ret) = address(token).call(data);
+        if (!ok || (ret.length != 0 && (ret.length != 32 || !abi.decode(ret, (bool))))) revert TransferFailed();
+    }
+
+    function send(address to, uint256 amount) private {
+        tokenCall(abi.encodeCall(IERC20.transfer, (to, amount)));
     }
 
     /// TOPPING UP: `amount` from the caller (who approved it to this contract first); anyone may
     function deposit(uint256 amount) external {
         if (amount == 0) revert ZeroAmount();
-        if (!token.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
+        tokenCall(abi.encodeCall(IERC20.transferFrom, (msg.sender, address(this), amount)));
         emit Deposited(msg.sender, amount);
     }
 
@@ -176,7 +190,7 @@ contract SpendPolicy {
 
     /// the owner takes `amount` back
     function withdraw(uint256 amount, address to) external onlyOwner {
-        if (!token.transfer(to, amount)) revert TransferFailed();
+        send(to, amount);
         emit Withdrawn(to, amount);
     }
 
@@ -185,7 +199,7 @@ contract SpendPolicy {
         uint256 bal = token.balanceOf(address(this));
         paused = true;
         agent = address(0);
-        if (bal > 0 && !token.transfer(to, bal)) revert TransferFailed();
+        if (bal > 0) send(to, bal);
         emit Closed(to, bal);
     }
 

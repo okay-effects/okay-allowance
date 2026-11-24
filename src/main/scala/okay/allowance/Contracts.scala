@@ -9,7 +9,7 @@ import scala.scalajs.js.annotation.JSImport
  */
 object Contracts:
   @js.native @JSImport("solc", JSImport.Default) private object Solc extends js.Object
-  val files = Vector("SpendPolicy.sol", "test/TestUSD.sol")
+  val files = Vector("SpendPolicy.sol", "test/TestUSD.sol", "test/NoBoolUSD.sol")
 
   /** compiled from contracts/; errors stop it */
   def build(): String =
