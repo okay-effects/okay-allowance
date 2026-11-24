@@ -40,7 +40,10 @@
   turn; monthly series roll on; Plan.scala (pure ops + PlanStore memory/file), Agent.payDue, McpServer roles
   agent/owner/demo, tools add_invoice, plan, pay_due, approve, check, uncheck, edit, remove; CLI intake, pay-due;
   McpSuite rewritten for the flow; docs/mcp.md.
-- [~] **audit** — an internal audit (specs/audit.md): a threat model of each part (SpendPolicy.sol, the Cardano
+- [x] **audit** — DONE 2026-11-24 (specs/audit.md): fixed C1 HIGH (Cardano double satisfaction across policies),
+  E1 MEDIUM (no-bool tokens), C2 MEDIUM (stray outputs locked); open C3 (deposit griefing), O1 (plan file
+  writable by the agent host), E5, E6; Aderyn report kept; AttacksSpec; invariants checked against mutants.
+  Was: an internal audit (specs/audit.md): a threat model of each part (SpendPolicy.sol, the Cardano
   validator, the agent, the plan and MCP); a line-by-line review of both contracts as an attacker; tools —
   Slither or Aderyn on the Solidity (installed from official sources), okay-cardano's Attacks on the validator;
   invariants as random tests (the policy's balance never goes to a payee not allowed; spending never above the

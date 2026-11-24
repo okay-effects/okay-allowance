@@ -244,3 +244,20 @@ class ContractSuite extends munit.FunSuite:
       assertEquals(found, Vector.empty)
       assert(payments >= 10, s"only $payments payments: the walk did not exercise paying")
   }
+
+  test("AUDIT E3 (known, by design): fixed periods — a full cap before a boundary and another right after it") {
+    for
+      w <- Life(Files.compiled, stopAfter = "created")
+      c = w.chain; p = w.parties; owner = p("owner"); agent = p("agent"); cloud = p("cloud hosting")
+      pol <- c.deploy(owner, "SpendPolicy", w.token, agent.address, js.BigInt((30 * Day).toString), usd(400), usd(400),
+        usd(400), c.now + js.BigInt((365 * Day).toString))
+      _ <- c.call(owner, pol, "SpendPolicy", "setPayee", cloud.address, true, usd(1_000), js.BigInt(0))
+      _ <- c.call(owner, w.token, "TestUSD", "approve", pol, usd(1_000))
+      _ <- c.call(owner, pol, "SpendPolicy", "deposit", usd(1_000))
+      _ = c.advance(30 * Day - 60)
+      a <- c.call(agent, pol, "SpendPolicy", "pay", cloud.address, usd(400), invoice("B-1"))
+      _ = c.advance(120)
+      b <- c.call(agent, pol, "SpendPolicy", "pay", cloud.address, usd(400), invoice("B-2"))
+    // two minutes, twice the period's cap: the owner bounds it with a payee's gap, or a smaller cap
+    yield assertEquals((a.ok, b.ok), (true, true))
+  }

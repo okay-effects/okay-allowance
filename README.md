@@ -29,7 +29,7 @@ every decision and its reason.
   time, edits, removes; the agent pays, one after another, what is approved and due in its window. Monthly
   payments come again each month.
 - **MCP** — two doors for any AI client (Claude Desktop, Claude Code, Cursor …): the agent's (`add_invoice`,
-  `pay_due`, `check_payment`, …), which holds the agent's keys and cannot approve its own proposals, and the
+  `pay_due`, `check_payment`, …), which holds the agent's keys and has no tool to approve its own proposals, and the
   owner's (`approve`, `uncheck`, `edit`, `remove`, …), which needs no key. See [docs/mcp.md](docs/mcp.md).
 - **The owner's page** — the plan in the browser on [okay-ui](https://github.com/okay-effects/okay-ui): each payment
   with its checkbox and its own buttons, the policies, the address book. `sbt pageTest` drives it in Chromium;
@@ -81,8 +81,13 @@ for metered use, the policy for bills; Solana is to become a chain of okay-allow
 
 ## Status
 
-Built for the Aevum Builder Challenge (a tUSD8 payment flow), independent of any chain's starter kit. Not audited:
-test networks and test tokens only.
+Built for the Aevum Builder Challenge (a tUSD8 payment flow), independent of any chain's starter kit.
+
+**Internal audit done, no external one yet** ([specs/audit.md](specs/audit.md)): both contracts read as an attacker,
+Aderyn on the Solidity, okay-cardano's known Cardano exploits on the validator, invariants over random walks checked
+against mutants of the contract. It found and fixed one HIGH hole (double satisfaction across Cardano policies) and
+two MEDIUM ones (tokens that return no `bool`; tokens sent to the Cardano script by a plain transfer); two MEDIUM
+items are open and listed. Test networks and test tokens only until an external audit.
 
 Apache-2.0.
 

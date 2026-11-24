@@ -207,8 +207,10 @@ The agent no longer pays an invoice the moment it reads it. It works through a P
 The plan is the owner's control above the contract: the contract still bounds every payment, whatever the plan
 says. The roles are separate doors: `mcp agent` (check_payment, add_invoice, plan, pay_due, status, requests,
 address_book) and `mcp owner` (plan, approve, check, uncheck, edit, remove, status, requests, address_book) — the
-agent cannot approve its own proposals; in a real setting the owner's server runs only in the owner's client and
-needs no key. `mcp demo` serves both in one process (three chains in memory). The plan is a JSON file for real
+agent's door has no way to approve its own proposals; in a real setting the owner's server runs only in the
+owner's client and needs no key. (The plan file is shared: a compromised agent HOST could write approvals into
+it — the contract still bounds every payment; signed approvals are the fix, audit O1.)
+`mcp demo` serves both in one process (three chains in memory). The plan is a JSON file for real
 nodes (`"plan"` in the config, shared by the two servers), memory in the demo. Direct `pay` is gone from MCP.
 The owner's standing orders (`demo/bills.json`, `"bills"` in a config) seed the plan, approved. `bills` (§12)
 becomes `plan`. The CLI: `intake CONFIG DIR` adds a folder of invoices; `pay-due CONFIG` runs the payments (cron).

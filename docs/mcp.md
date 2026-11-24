@@ -7,7 +7,9 @@ address book, never an address from the invoice) and then through the contract o
 whatever the plan says. The model never sees a key.
 
 Two doors, two MCP servers:
-- **the agent's** (`mcp agent CONFIG`) — it holds the agent's keys; it cannot approve its own proposals;
+- **the agent's** (`mcp agent CONFIG`) — it holds the agent's keys; it has no tool to approve its own proposals (the plan
+  file is shared, so a compromised agent host could still write into it — the contract bounds every payment; see
+  specs/audit.md, O1);
 - **the owner's** (`mcp owner CONFIG`) — no key needed (it only reads the chains); run it only in the owner's client.
 
 They share the plan file (`"plan"` in the config). `mcp demo` serves both doors in one process, on Ethereum, Base
