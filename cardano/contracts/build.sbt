@@ -13,5 +13,11 @@ lazy val root = (project in file("."))
       "org.scalus" %% "scalus" % scalusVersion,
       "org.scalus" %% "scalus-cardano-ledger" % scalusVersion,
       "org.scalus" %% "scalus-testkit" % scalusVersion % Test,
-      "org.scalatest" %% "scalatest" % "3.2.20" % Test),
+      "org.scalatest" %% "scalatest" % "3.2.20" % Test,
+      // the audit (specs/audit.md): known Cardano exploits tried on the validator's passing transactions
+      "io.github.okay-effects" %% "okay-cardano" % "0.1.0" % Test),
+    resolvers ++= Seq("okay-effects" at "https://okay-effects.github.io/okay-simple/maven",
+      "okay-scala" at "https://okay-effects.github.io/okay-scala/maven",
+      "okay-http" at "https://okay-effects.github.io/okay-http/maven",
+      "okay-cardano" at "https://okay-effects.github.io/okay-cardano/maven"),
     addCompilerPlugin(("org.scalus" % "scalus-plugin" % scalusVersion).cross(CrossVersion.full)))
