@@ -88,77 +88,83 @@ object SpendPolicy extends DataParameterizedValidator {
         val ownHash = ownCred match
             case Credential.ScriptCredential(h) => h
             case _                              => fail(NotAScript)
-        require(own.value.quantityOf(ownHash, stateName) == BigInt(1), NotThePolicy)
-        require(tx.findInputsByCredential(ownCred).length == BigInt(1), OneInput)
-        val st = inlineState(own)
-        redeemer.to[PolicyAction] match
-            case PolicyAction.Pay(payee, amount, invoice, proof) =>
-                require(tx.isSignedBy(st.agent), NotAgent)
-                require(!st.paused, Paused)
-                require(tx.mint.tokens(ownHash).isEmpty, NoMint)
-                val from = tx.validFromOrFail(NoStart)
-                val to = tx.validToOrFail(NoEnd)
-                require(to - from <= hour, WindowTooLong)
-                require(to <= st.expires, Expired)
-                // the rules in SpendPolicy.sol's order: a payment breaking two is refused for the same one on both
-                require(amount > BigInt(0), ZeroAmount)
-                val p = st.payees.find(x => x.who === payee) match
-                    case Option.Some(x) => x
-                    case Option.None    => fail(PayeeNotAllowed)
-                require(amount <= st.maxPayment, OverMax)
-                require(from >= st.start, NotStarted)
-                val w = (from - st.start) / st.period
-                require(w >= st.window, BadTime)
-                // AlreadyPaid: the invoice absent from those paid, by the proof, and inserted — the MPF's own refusal
-                // ("Invalid proof or element exists") when it is there: no proof of absence exists
-                val invoices = MerklePatriciaForestry(st.invoices).insert(invoice, ByteString.empty, proof).root
-                require(p.last == BigInt(0) || from >= p.last + p.gap, TooSoon)
-                val own1 = (if p.window == w then p.spent else BigInt(0)) + amount
-                require(own1 <= p.cap, PayeeCap)
-                val total = (if st.window == w then st.spent else BigInt(0)) + amount
-                require(total <= st.periodCap, PeriodCap)
-                if amount > st.approvalAbove then require(tx.isSignedBy(st.owner), NeedsOwner)
-                val balance = own.value.quantityOf(st.token.policy, st.token.name)
-                require(amount <= balance, InsufficientBalance)
-                val out = theOutput(tx, ownCred)
-                require(out.address === own.address, SameAddress)
-                val next = PolicyState(st.owner, st.agent, st.token, st.period, st.start, st.periodCap,
-                    st.maxPayment, st.approvalAbove, st.expires, st.paused, w, total,
-                    st.payees.map(x => if x.who === payee then Payee(payee, p.cap, p.gap, own1, w, from) else x),
-                    invoices)
-                require(outDatum(out) == next.toData, StateChanged)
-                require(out.value.quantityOf(st.token.policy, st.token.name) == balance - amount, BalanceChanged)
-                require(out.value.getLovelace >= own.value.getLovelace, BalanceChanged)
-                require(holdsOnly(out.value, ownHash, st.token), OnlyTheToken)
-                // only outputs that name this payment count (audit C1): another policy, or another invoice, in the same
-                // transaction cannot count the same output
-                val receipt = Receipt(ownHash, invoice).toData
-                val got = tx.outputs.foldLeft(BigInt(0)) { (acc, o) =>
-                    val ours = o.datum match
-                        case OutputDatum.OutputDatum(d) => d == receipt
-                        case _                          => false
-                    if o.address.credential === payee && ours then
-                        acc + o.value.quantityOf(st.token.policy, st.token.name)
-                    else acc
-                }
-                require(got >= amount, NotPaid)
-            case PolicyAction.Deposit =>
-                require(tx.mint.tokens(ownHash).isEmpty, NoMint)
-                val out = theOutput(tx, ownCred)
-                require(out.address === own.address, SameAddress)
-                require(outDatum(out) == st.toData, StateChanged)
-                require(out.value.quantityOf(st.token.policy, st.token.name) >
-                    own.value.quantityOf(st.token.policy, st.token.name), DepositNothing)
-                require(out.value.getLovelace >= own.value.getLovelace, BalanceChanged)
-                require(holdsOnly(out.value, ownHash, st.token), OnlyTheToken)
-            case PolicyAction.Owner =>
-                require(tx.isSignedBy(st.owner), OwnerMustSign)
-                // closing burns the NFT; else the state goes on, valid, at the same address
-                if !tx.mint.hasOnly(ownHash, stateName, BigInt(-1)) then
+        if own.value.quantityOf(ownHash, stateName) != BigInt(1) then
+            // A STRAY OUTPUT at the policy's address (a plain transfer, not Deposit; audit C2): spent only beside the
+            // policy's state, whose own validation holds — and that allows other inputs of the policy on the
+            // owner's path alone (a payment and a deposit need exactly one): only the owner sweeps it
+            require(tx.inputs.exists(i => i.resolved.value.quantityOf(ownHash, stateName) == BigInt(1)), NotThePolicy)
+        else
+            val st = inlineState(own)
+            redeemer.to[PolicyAction] match
+                case PolicyAction.Pay(payee, amount, invoice, proof) =>
+                    require(tx.findInputsByCredential(ownCred).length == BigInt(1), OneInput)
+                    require(tx.isSignedBy(st.agent), NotAgent)
+                    require(!st.paused, Paused)
+                    require(tx.mint.tokens(ownHash).isEmpty, NoMint)
+                    val from = tx.validFromOrFail(NoStart)
+                    val to = tx.validToOrFail(NoEnd)
+                    require(to - from <= hour, WindowTooLong)
+                    require(to <= st.expires, Expired)
+                    // the rules in SpendPolicy.sol's order: a payment breaking two is refused for the same one on both
+                    require(amount > BigInt(0), ZeroAmount)
+                    val p = st.payees.find(x => x.who === payee) match
+                        case Option.Some(x) => x
+                        case Option.None    => fail(PayeeNotAllowed)
+                    require(amount <= st.maxPayment, OverMax)
+                    require(from >= st.start, NotStarted)
+                    val w = (from - st.start) / st.period
+                    require(w >= st.window, BadTime)
+                    // AlreadyPaid: the invoice absent from those paid, by the proof, and inserted — the MPF's own
+                    // refusal ("Invalid proof or element exists") when it is there: no proof of absence exists
+                    val invoices = MerklePatriciaForestry(st.invoices).insert(invoice, ByteString.empty, proof).root
+                    require(p.last == BigInt(0) || from >= p.last + p.gap, TooSoon)
+                    val own1 = (if p.window == w then p.spent else BigInt(0)) + amount
+                    require(own1 <= p.cap, PayeeCap)
+                    val total = (if st.window == w then st.spent else BigInt(0)) + amount
+                    require(total <= st.periodCap, PeriodCap)
+                    if amount > st.approvalAbove then require(tx.isSignedBy(st.owner), NeedsOwner)
+                    val balance = own.value.quantityOf(st.token.policy, st.token.name)
+                    require(amount <= balance, InsufficientBalance)
                     val out = theOutput(tx, ownCred)
                     require(out.address === own.address, SameAddress)
-                    val next = inlineState(out)
-                    require(holdsOnly(out.value, ownHash, next.token), OnlyTheToken)
+                    val next = PolicyState(st.owner, st.agent, st.token, st.period, st.start, st.periodCap,
+                        st.maxPayment, st.approvalAbove, st.expires, st.paused, w, total,
+                        st.payees.map(x => if x.who === payee then Payee(payee, p.cap, p.gap, own1, w, from) else x),
+                        invoices)
+                    require(outDatum(out) == next.toData, StateChanged)
+                    require(out.value.quantityOf(st.token.policy, st.token.name) == balance - amount, BalanceChanged)
+                    require(out.value.getLovelace >= own.value.getLovelace, BalanceChanged)
+                    require(holdsOnly(out.value, ownHash, st.token), OnlyTheToken)
+                    // only outputs that name this payment count (audit C1): another policy, or another invoice, in
+                    // the same transaction cannot count the same output
+                    val receipt = Receipt(ownHash, invoice).toData
+                    val got = tx.outputs.foldLeft(BigInt(0)) { (acc, o) =>
+                        val ours = o.datum match
+                            case OutputDatum.OutputDatum(d) => d == receipt
+                            case _                          => false
+                        if o.address.credential === payee && ours then
+                            acc + o.value.quantityOf(st.token.policy, st.token.name)
+                        else acc
+                    }
+                    require(got >= amount, NotPaid)
+                case PolicyAction.Deposit =>
+                    require(tx.findInputsByCredential(ownCred).length == BigInt(1), OneInput)
+                    require(tx.mint.tokens(ownHash).isEmpty, NoMint)
+                    val out = theOutput(tx, ownCred)
+                    require(out.address === own.address, SameAddress)
+                    require(outDatum(out) == st.toData, StateChanged)
+                    require(out.value.quantityOf(st.token.policy, st.token.name) >
+                        own.value.quantityOf(st.token.policy, st.token.name), DepositNothing)
+                    require(out.value.getLovelace >= own.value.getLovelace, BalanceChanged)
+                    require(holdsOnly(out.value, ownHash, st.token), OnlyTheToken)
+                case PolicyAction.Owner =>
+                    require(tx.isSignedBy(st.owner), OwnerMustSign)
+                    // closing burns the NFT; else the state goes on, valid, at the same address
+                    if !tx.mint.hasOnly(ownHash, stateName, BigInt(-1)) then
+                        val out = theOutput(tx, ownCred)
+                        require(out.address === own.address, SameAddress)
+                        val next = inlineState(out)
+                        require(holdsOnly(out.value, ownHash, next.token), OnlyTheToken)
     }
 
     /** the one output back to the policy's credential */

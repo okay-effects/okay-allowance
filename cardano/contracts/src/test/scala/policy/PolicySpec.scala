@@ -187,6 +187,29 @@ class PolicySpec extends AnyFunSuite, ScalusTest {
         assert(run(ref).isSuccess, run(ref).explain)
         assert(run(TestUtil.mockTxOutRef(10, 0)).failsWith("NotPaid"))
     }
+    test("AUDIT C2: tokens sent to the policy's address by a plain transfer — swept by the owner, by no one else") {
+        val strayRef = TestUtil.mockTxOutRef(11, 0)
+        val stray = TxInInfo(strayRef, TxOut(home, ada(2_000_000) + tusd(300), OutputDatum.NoOutputDatum))
+        def run(own: TxOutRef, ins: List[TxInInfo], outs: List[TxOut], action: PolicyAction, signers: List[PubKeyHash],
+            range: Interval = Interval.always) =
+            val tx = TxInfo.placeholder.copy(inputs = ins, outputs = outs, signatories = signers, validRange = range)
+            program.runWithDebug(ScriptContext(tx, action.toData, ScriptInfo.SpendingScript(own, POption.None)))
+        // the owner: the state on, the stray to the owner — both scripts agree
+        val sweep = List(out(st, held), TxOut(Address.fromPubKeyHash(owner), ada(2_000_000) + tusd(300),
+            OutputDatum.NoOutputDatum))
+        val ins = List(TxInInfo(ref, out(st, held)), stray)
+        assert(run(ref, ins, sweep, PolicyAction.Owner, List(owner)).isSuccess)
+        assert(run(strayRef, ins, sweep, PolicyAction.Owner, List(owner)).isSuccess)
+        // the stray alone: refused
+        assert(run(strayRef, List(stray), List(to(Credential.PubKeyCredential(eve), tusd(300))), PolicyAction.Owner,
+            List(eve)).failsWith("NotThePolicy"))
+        // the agent's payment taking the stray along: the state refuses it
+        val n = after(st, cloud, 90, "INV-1", t0 + day)
+        val pay = PolicyAction.Pay(cloud, 90, inv("INV-1"), Trie.empty.proveNonMembership(inv("INV-1")))
+        assert(run(ref, ins, List(out(n, held - tusd(90)), paid(cloud, ada(2_000_000) + tusd(90), "INV-1"),
+            to(Credential.PubKeyCredential(agent), tusd(300))), pay, List(agent),
+            Interval.between(t0 + day, t0 + day + 600_000)).failsWith("OneInput"))
+    }
     test("a forged policy: an input without the NFT") {
         val r = spend(List(TxInInfo(ref, out(st, ada(5_000_000) + tusd(1000)))), List(out(st, tusd(910)),
             to(cloud, tusd(90))), PolicyAction.Pay(cloud, 90, inv("F"), Trie.empty.proveNonMembership(inv("F"))),
