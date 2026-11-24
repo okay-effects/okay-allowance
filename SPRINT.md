@@ -40,6 +40,12 @@
   turn; monthly series roll on; Plan.scala (pure ops + PlanStore memory/file), Agent.payDue, McpServer roles
   agent/owner/demo, tools add_invoice, plan, pay_due, approve, check, uncheck, edit, remove; CLI intake, pay-due;
   McpSuite rewritten for the flow; docs/mcp.md.
+- [~] **audit** — an internal audit (specs/audit.md): a threat model of each part (SpendPolicy.sol, the Cardano
+  validator, the agent, the plan and MCP); a line-by-line review of both contracts as an attacker; tools —
+  Slither or Aderyn on the Solidity (installed from official sources), okay-cardano's Attacks on the validator;
+  invariants as random tests (the policy's balance never goes to a payee not allowed; spending never above the
+  caps). Each finding: severity, a test that shows it, the fix or why not. Then the README says "internal audit,
+  findings here"; an external audit before real money.
 - [ ] **solana** — (§15) Solana as a chain of okay-allowance, the same rules, prepaid. How: (1) the policy as a
   program in Rust (Anchor): a vault token account owned by a PDA holding the stablecoin; a state account with the
   owner, the agent, the limits, a bounded list of payees (cap, gap, spending, last); EACH INVOICE PAID = a PDA of
